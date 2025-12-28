@@ -1,7 +1,10 @@
+from datetime import datetime
+
 import pytest
 from pydantic import ValidationError
-from datetime import datetime
+
 from coreason_etl_epar.schema import EPARSourceRow
+
 
 def test_valid_epar_source_row():
     data = {
@@ -19,11 +22,12 @@ def test_valid_epar_source_row():
         "exceptional_circumstances": False,
         "authorisation_status": "Authorised",
         "revision_date": datetime.now(),
-        "url": "http://example.com"
+        "url": "http://example.com",
     }
     row = EPARSourceRow(**data)
     assert row.product_number == "EMEA/H/C/001234"
     assert row.category == "Human"
+
 
 def test_optional_fields():
     data = {
@@ -34,12 +38,13 @@ def test_optional_fields():
         "active_substance": "Test Substance",
         # Missing therapeutic_area and atc_code
         "authorisation_status": "Refused",
-        "url": "http://example.com"
+        "url": "http://example.com",
     }
     row = EPARSourceRow(**data)
     assert row.therapeutic_area is None
     assert row.atc_code is None
     assert row.generic is False  # Default value
+
 
 def test_invalid_category():
     data = {
@@ -49,11 +54,12 @@ def test_invalid_category():
         "marketing_authorisation_holder": "Vet MAH",
         "active_substance": "Vet Substance",
         "authorisation_status": "Authorised",
-        "url": "http://example.com"
+        "url": "http://example.com",
     }
     with pytest.raises(ValidationError) as excinfo:
         EPARSourceRow(**data)
     assert "Input should be 'Human'" in str(excinfo.value)
+
 
 def test_invalid_product_number_format():
     data = {
@@ -63,7 +69,7 @@ def test_invalid_product_number_format():
         "marketing_authorisation_holder": "Test MAH",
         "active_substance": "Test Substance",
         "authorisation_status": "Authorised",
-        "url": "http://example.com"
+        "url": "http://example.com",
     }
     with pytest.raises(ValidationError) as excinfo:
         EPARSourceRow(**data)

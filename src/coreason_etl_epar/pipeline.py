@@ -1,22 +1,20 @@
-import dlt
-import polars as pl
+import os
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Dict
+
+import dlt
+import polars as pl
 from loguru import logger
-import os
 
 from coreason_etl_epar.ingest import epar_index, spor_organisations
-from coreason_etl_epar.transform_silver import apply_scd2
 from coreason_etl_epar.transform_enrich import enrich_epar
 from coreason_etl_epar.transform_gold import create_gold_layer
+from coreason_etl_epar.transform_silver import apply_scd2
+
 
 class EPARPipeline:
-    def __init__(self,
-                 epar_path: str,
-                 spor_path: str,
-                 work_dir: str = ".coreason_data",
-                 destination: str = "duckdb"):
+    def __init__(self, epar_path: str, spor_path: str, work_dir: str = ".coreason_data", destination: str = "duckdb"):
         self.epar_path = epar_path
         self.spor_path = spor_path
         self.work_dir = Path(work_dir)
@@ -115,23 +113,24 @@ class EPARPipeline:
                     epar_df = pl.DataFrame()
 
                 try:
-                    spor_df = pl.read_database(f"SELECT * FROM {self.dataset_name}.spor_organisations", connection=conn_str)
+                    spor_df = pl.read_database(
+                        f"SELECT * FROM {self.dataset_name}.spor_organisations", connection=conn_str
+                    )
                 except Exception:
                     spor_df = pl.DataFrame()
 
         # Ensure coverage hits this line
         logger.debug("Returning from load_bronze")
         if self.destination == "duckdb":
-             return {"epar": epar_df, "spor": spor_df}
+            return {"epar": epar_df, "spor": spor_df}
         else:
-             logger.warning("FALLBACK REACHED")
-             res = {"epar": epar_df, "spor": spor_df}
-             return res
+            logger.warning("FALLBACK REACHED")
+            res = {"epar": epar_df, "spor": spor_df}
+            return res
 
-    def run_transformations(self,
-                            bronze_epar: pl.DataFrame,
-                            bronze_spor: pl.DataFrame,
-                            history_path: str = "silver_history.parquet") -> None:
+    def run_transformations(
+        self, bronze_epar: pl.DataFrame, bronze_spor: pl.DataFrame, history_path: str = "silver_history.parquet"
+    ) -> None:
         """
         Runs Silver and Gold transformations.
         """
@@ -171,7 +170,7 @@ class EPARPipeline:
             history=silver_history,
             primary_key="product_number",
             ingestion_ts=ingestion_ts,
-            hash_columns=hash_cols
+            hash_columns=hash_cols,
         )
 
         # 2. Enrichment

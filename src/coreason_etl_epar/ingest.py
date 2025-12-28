@@ -1,9 +1,12 @@
+from typing import Any, Dict, Iterator
+
 import dlt
 import polars as pl
-from typing import Iterator, Dict, Any
-from coreason_etl_epar.schema import EPARSourceRow
-from pydantic import ValidationError
 from loguru import logger
+from pydantic import ValidationError
+
+from coreason_etl_epar.schema import EPARSourceRow
+
 
 @dlt.resource(name="epar_index", write_disposition="replace")
 def epar_index(file_path: str) -> Iterator[Dict[str, Any]]:
@@ -30,8 +33,8 @@ def epar_index(file_path: str) -> Iterator[Dict[str, Any]]:
     # Filter for 'Human' category
     # Note: The source file column is likely 'Category'
     if "category" not in df.columns:
-         logger.error("Column 'category' not found in Excel file")
-         return
+        logger.error("Column 'category' not found in Excel file")
+        return
 
     filtered_df = df.filter(pl.col("category") == "Human")
 
@@ -73,8 +76,10 @@ def epar_index(file_path: str) -> Iterator[Dict[str, Any]]:
             # Yes, dlt allows yielding dlt.mark.with_table_name(row, "quarantine")
             pass
 
-import zipfile
+
 import xml.etree.ElementTree as ET
+import zipfile
+
 
 @dlt.resource(name="spor_organisations", write_disposition="replace")
 def spor_organisations(file_path: str) -> Iterator[Dict[str, Any]]:
@@ -85,9 +90,9 @@ def spor_organisations(file_path: str) -> Iterator[Dict[str, Any]]:
     logger.info(f"Reading SPOR organisations from {file_path}")
 
     try:
-        with zipfile.ZipFile(file_path, 'r') as z:
+        with zipfile.ZipFile(file_path, "r") as z:
             # Assume there is one XML file or we pick the first one ending in .xml
-            xml_files = [f for f in z.namelist() if f.endswith('.xml')]
+            xml_files = [f for f in z.namelist() if f.endswith(".xml")]
             if not xml_files:
                 logger.error("No XML file found in SPOR zip archive")
                 return
@@ -113,18 +118,18 @@ def spor_organisations(file_path: str) -> Iterator[Dict[str, Any]]:
                 # For now, I'll use a generic approach looking for 'Organisation' tags.
 
                 for event, elem in context:
-                    if elem.tag.endswith('rganisation'): # Handle potential namespace prefixes
+                    if elem.tag.endswith("rganisation"):  # Handle potential namespace prefixes
                         org_data = {}
                         roles = []
 
                         # Extract children data
                         for child in elem:
-                            tag_name = child.tag.split('}')[-1] # Strip namespace
-                            if tag_name.lower() == 'name':
-                                org_data['name'] = child.text
-                            elif tag_name.lower() == 'organisationid':
-                                org_data['org_id'] = child.text
-                            elif tag_name.lower() == 'roles':
+                            tag_name = child.tag.split("}")[-1]  # Strip namespace
+                            if tag_name.lower() == "name":
+                                org_data["name"] = child.text
+                            elif tag_name.lower() == "organisationid":
+                                org_data["org_id"] = child.text
+                            elif tag_name.lower() == "roles":
                                 # Iterate over roles
                                 for role in child:
                                     # Role text might be in a text node or a child 'Name' node
@@ -132,24 +137,20 @@ def spor_organisations(file_path: str) -> Iterator[Dict[str, Any]]:
                                     if not role_name:
                                         # Try finding a name child
                                         for role_child in role:
-                                            if role_child.tag.split('}')[-1].lower() == 'name':
+                                            if role_child.tag.split("}")[-1].lower() == "name":
                                                 role_name = role_child.text
                                                 break
                                     if role_name:
                                         roles.append(role_name)
 
-                        org_data['roles'] = roles
+                        org_data["roles"] = roles
 
                         # Filter for 'Marketing Authorisation Holder'
                         # Per FRD: "Filter: If possible, limit to roles 'Marketing Authorisation Holder'"
                         is_mah = any("marketing authorisation holder" in r.lower() for r in roles)
 
                         if is_mah:
-                            yield {
-                                "org_id": org_data.get("org_id"),
-                                "name": org_data.get("name"),
-                                "roles": roles
-                            }
+                            yield {"org_id": org_data.get("org_id"), "name": org_data.get("name"), "roles": roles}
 
                         # Clear element to save memory
                         elem.clear()

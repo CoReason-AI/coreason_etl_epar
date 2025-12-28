@@ -1,7 +1,10 @@
-import pytest
-import polars as pl
 from datetime import datetime
+
+import polars as pl
+import pytest
+
 from coreason_etl_epar.transform_silver import apply_scd2
+
 
 @pytest.fixture
 def empty_history():
@@ -12,16 +15,14 @@ def empty_history():
         "valid_from": pl.Datetime,
         "valid_to": pl.Datetime,
         "is_current": pl.Boolean,
-        "row_hash": pl.String
+        "row_hash": pl.String,
     }
     return pl.DataFrame(schema=schema)
 
+
 def test_scd2_initial_load(empty_history):
     ts = datetime(2024, 1, 1)
-    snapshot = pl.DataFrame({
-        "id": [1, 2],
-        "data": ["A", "B"]
-    })
+    snapshot = pl.DataFrame({"id": [1, 2], "data": ["A", "B"]})
 
     result = apply_scd2(snapshot, empty_history, "id", ts, ["data"])
 
@@ -30,6 +31,7 @@ def test_scd2_initial_load(empty_history):
     assert result.filter(pl.col("id") == 1)["valid_from"].item() == ts
     assert result.filter(pl.col("id") == 1)["valid_to"].item() is None
     assert "row_hash" in result.columns
+
 
 def test_scd2_no_change(empty_history):
     ts1 = datetime(2024, 1, 1)
@@ -47,6 +49,7 @@ def test_scd2_no_change(empty_history):
     assert result["valid_from"].item() == ts1
     assert result["valid_to"].item() is None
     assert result["is_current"].item() is True
+
 
 def test_scd2_update(empty_history):
     ts1 = datetime(2024, 1, 1)
@@ -73,6 +76,7 @@ def test_scd2_update(empty_history):
     assert new_rec["valid_to"].item() is None
     assert new_rec["data"].item() == "A_Changed"
 
+
 def test_scd2_delete(empty_history):
     ts1 = datetime(2024, 1, 1)
     ts2 = datetime(2024, 1, 2)
@@ -89,6 +93,7 @@ def test_scd2_delete(empty_history):
     rec = result.row(0, named=True)
     assert rec["is_current"] is False
     assert rec["valid_to"] == ts2
+
 
 def test_scd2_new_insert(empty_history):
     ts1 = datetime(2024, 1, 1)
@@ -107,7 +112,7 @@ def test_scd2_new_insert(empty_history):
 
     rec1 = result.filter(pl.col("id") == 1).row(0, named=True)
     assert rec1["is_current"] is True
-    assert rec1["valid_from"] == ts1 # Original TS
+    assert rec1["valid_from"] == ts1  # Original TS
 
     rec2 = result.filter(pl.col("id") == 2).row(0, named=True)
     assert rec2["is_current"] is True

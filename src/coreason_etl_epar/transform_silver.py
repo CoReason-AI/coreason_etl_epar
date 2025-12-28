@@ -1,7 +1,9 @@
-import polars as pl
-from datetime import datetime
 import hashlib
-from typing import List, Optional
+from datetime import datetime
+from typing import List
+
+import polars as pl
+
 
 def generate_row_hash(df: pl.DataFrame, columns: List[str]) -> pl.DataFrame:
     """
@@ -16,10 +18,7 @@ def generate_row_hash(df: pl.DataFrame, columns: List[str]) -> pl.DataFrame:
 
     # Note: polars doesn't have a direct row_hash function, we construct it.
 
-    expr = pl.concat_str(
-        [pl.col(c).cast(pl.String).fill_null("") for c in columns],
-        separator="|"
-    )
+    expr = pl.concat_str([pl.col(c).cast(pl.String).fill_null("") for c in columns], separator="|")
 
     # Use map_elements to apply md5 (slow but standard) or if polars has a hash function?
     # Polars has `hash()` but it's not MD5 (it's 64-bit non-cryptographic).
@@ -27,15 +26,16 @@ def generate_row_hash(df: pl.DataFrame, columns: List[str]) -> pl.DataFrame:
     # We can use `map_elements` with hashlib.
 
     return df.with_columns(
-        row_hash = expr.map_elements(lambda x: hashlib.md5(x.encode()).hexdigest(), return_dtype=pl.String)
+        row_hash=expr.map_elements(lambda x: hashlib.md5(x.encode()).hexdigest(), return_dtype=pl.String)
     )
+
 
 def apply_scd2(
     current_snapshot: pl.DataFrame,
     history: pl.DataFrame,
     primary_key: str,
     ingestion_ts: datetime,
-    hash_columns: List[str]
+    hash_columns: List[str],
 ) -> pl.DataFrame:
     """
     Applies SCD Type 2 logic to merge a new snapshot into the existing history.
@@ -62,9 +62,7 @@ def apply_scd2(
     if history.is_empty():
         # Initial Load: All are new
         return snapshot_hashed.with_columns(
-            valid_from = pl.lit(ingestion_ts),
-            valid_to = pl.lit(None, dtype=pl.Datetime),
-            is_current = pl.lit(True)
+            valid_from=pl.lit(ingestion_ts), valid_to=pl.lit(None, dtype=pl.Datetime), is_current=pl.lit(True)
         )
 
     current_history = history.filter(pl.col("is_current") == True)
@@ -90,8 +88,7 @@ def apply_scd2(
 
     # Changed Records (New Version)
     changed_records = joined.filter(
-        (pl.col("hist_row_hash").is_not_null()) &
-        (pl.col("row_hash") != pl.col("hist_row_hash"))
+        (pl.col("hist_row_hash").is_not_null()) & (pl.col("row_hash") != pl.col("hist_row_hash"))
     ).drop("hist_row_hash")
 
     # Unchanged Records (We don't touch these in terms of creating new rows,
@@ -130,28 +127,20 @@ def apply_scd2(
     history_to_close = current_history.join(keys_to_close, on=primary_key, how="inner")
     history_to_keep = current_history.join(keys_to_close, on=primary_key, how="anti")
 
-    closed_updates = history_to_close.with_columns(
-        valid_to = pl.lit(ingestion_ts),
-        is_current = pl.lit(False)
-    )
+    closed_updates = history_to_close.with_columns(valid_to=pl.lit(ingestion_ts), is_current=pl.lit(False))
 
     # 4. Create New Entries
     # From New Records and Changed Records
 
     new_entries = pl.concat([new_records, changed_records]).with_columns(
-        valid_from = pl.lit(ingestion_ts),
-        valid_to = pl.lit(None, dtype=pl.Datetime),
-        is_current = pl.lit(True)
+        valid_from=pl.lit(ingestion_ts), valid_to=pl.lit(None, dtype=pl.Datetime), is_current=pl.lit(True)
     )
 
     # 5. Union All
     # Result = closed_history + history_to_keep + closed_updates + new_entries
 
-    final_history = pl.concat([
-        closed_history,
-        history_to_keep,
-        closed_updates,
-        new_entries
-    ], how="diagonal") # diagonal to handle potential column reordering or missing cols if schema evolved (though strict schema preferred)
+    final_history = pl.concat(
+        [closed_history, history_to_keep, closed_updates, new_entries], how="diagonal"
+    )  # diagonal to handle potential column reordering or missing cols if schema evolved (though strict schema preferred)
 
     return final_history

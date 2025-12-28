@@ -1,6 +1,5 @@
 import polars as pl
-import re
-from typing import List, Optional
+
 
 def normalize_status(status: str) -> str:
     """
@@ -19,7 +18,8 @@ def normalize_status(status: str) -> str:
         return "WITHDRAWN"
     if "SUSPENDED" in s:
         return "SUSPENDED"
-    return "UNKNOWN" # Fallback
+    return "UNKNOWN"  # Fallback
+
 
 def jaro_winkler(s1: str, s2: str) -> float:
     """
@@ -47,15 +47,15 @@ def jaro_winkler(s1: str, s2: str) -> float:
         for j in range(start, end):
             # Check if s2 char is already used
             if s2_matches[j]:
-                continue # pragma: no cover
+                continue  # pragma: no cover
             # Check for mismatch
             if s1[i] != s2[j]:
                 continue
 
-            s1_matches[i] = True # pragma: no cover
+            s1_matches[i] = True  # pragma: no cover
             s2_matches[j] = True
             matches += 1
-            break # pragma: no cover
+            break  # pragma: no cover
 
     if matches == 0:
         return 0.0
@@ -84,6 +84,7 @@ def jaro_winkler(s1: str, s2: str) -> float:
 
     return jaro + prefix * 0.1 * (1.0 - jaro)
 
+
 def enrich_epar(df: pl.DataFrame, spor_df: pl.DataFrame) -> pl.DataFrame:
     """
     Applies cleaning and enrichment to EPAR dataframe.
@@ -98,9 +99,7 @@ def enrich_epar(df: pl.DataFrame, spor_df: pl.DataFrame) -> pl.DataFrame:
 
     # 1. Base Procedure ID
     # Regex extract EMEA/H/C/(\d+)
-    df = df.with_columns(
-        pl.col("product_number").str.extract(r"EMEA/H/C/(\d+)", 1).alias("base_procedure_id")
-    )
+    df = df.with_columns(pl.col("product_number").str.extract(r"EMEA/H/C/(\d+)", 1).alias("base_procedure_id"))
 
     # 2. Substance Normalization (Split to List)
     # Refined Substance: Replace + with / first then split
@@ -163,8 +162,7 @@ def enrich_epar(df: pl.DataFrame, spor_df: pl.DataFrame) -> pl.DataFrame:
 
     # Filter > 0.90 and pick best match
     matches = (
-        cross
-        .filter(pl.col("score") > 0.90)
+        cross.filter(pl.col("score") > 0.90)
         .sort("score", descending=True)
         .unique(subset=["marketing_authorisation_holder"], keep="first")
         .select(["marketing_authorisation_holder", "spor_id"])

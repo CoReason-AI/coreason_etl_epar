@@ -1,6 +1,7 @@
-import pytest
 import polars as pl
+
 from coreason_etl_epar.transform_enrich import enrich_epar, jaro_winkler, normalize_status
+
 
 def test_jaro_winkler():
     # Exact match
@@ -10,7 +11,7 @@ def test_jaro_winkler():
     # Empty strings
     assert jaro_winkler("", "abc") == 0.0
     assert jaro_winkler("abc", "") == 0.0
-    assert jaro_winkler("", "") == 1.0 # Handled by first check
+    assert jaro_winkler("", "") == 1.0  # Handled by first check
     # Branch check for len == 0 handled.
     # Check transposition
     # "dixon" vs "dicksonx"
@@ -21,7 +22,7 @@ def test_jaro_winkler():
     # Check no match branch inside inner loop (lines 48-51) is implicitly covered by low scores.
 
     # Check break in prefix loop
-    assert jaro_winkler("abc", "abd") < 1.0 # prefix = 2
+    assert jaro_winkler("abc", "abd") < 1.0  # prefix = 2
     assert jaro_winkler("dixon", "dicksonx") > 0.7
 
     # Check duplicate char handling (covers 'continue' when s2_matches[j] is True)
@@ -42,9 +43,10 @@ def test_jaro_winkler():
     assert jaro_winkler("aa", "aa") == 1.0
 
     # Extra cases to force coverage
-    assert jaro_winkler("CRATE", "TRACE") > 0.0 # Transposition
+    assert jaro_winkler("CRATE", "TRACE") > 0.0  # Transposition
     assert jaro_winkler("DwAyNE", "DuANE") > 0.0
-    assert jaro_winkler("ABC", "XBC") > 0.0 # Match logic
+    assert jaro_winkler("ABC", "XBC") > 0.0  # Match logic
+
 
 def test_normalize_status():
     assert normalize_status("Authorised") == "APPROVED"
@@ -55,21 +57,23 @@ def test_normalize_status():
     assert normalize_status("Suspended") == "SUSPENDED"
     assert normalize_status("Unknown Status") == "UNKNOWN"
 
+
 def test_enrich_epar_logic():
     # Setup Data
-    df = pl.DataFrame({
-        "product_number": ["EMEA/H/C/001234", "EMEA/H/C/999"],
-        "active_substance": ["Sub A / Sub B", "Sub C + Sub D"],
-        "atc_code": ["A01;B02", "C03,D04"],
-        "authorisation_status": ["Authorised", "Refused"],
-        "marketing_authorisation_holder": ["Pharma Corp", "BioTech Inc"]
-    })
+    df = pl.DataFrame(
+        {
+            "product_number": ["EMEA/H/C/001234", "EMEA/H/C/999"],
+            "active_substance": ["Sub A / Sub B", "Sub C + Sub D"],
+            "atc_code": ["A01;B02", "C03,D04"],
+            "authorisation_status": ["Authorised", "Refused"],
+            "marketing_authorisation_holder": ["Pharma Corp", "BioTech Inc"],
+        }
+    )
 
     # Use names that are very close to satisfy > 0.90 threshold
-    spor_df = pl.DataFrame({
-        "name": ["Pharma Corp.", "BioTech Inc.", "Other Co"],
-        "org_id": ["ORG-100", "ORG-200", "ORG-300"]
-    })
+    spor_df = pl.DataFrame(
+        {"name": ["Pharma Corp.", "BioTech Inc.", "Other Co"], "org_id": ["ORG-100", "ORG-200", "ORG-300"]}
+    )
 
     # Run Enrichment
     result = enrich_epar(df, spor_df)
@@ -81,11 +85,11 @@ def test_enrich_epar_logic():
     row1 = result.row(0, named=True)
     assert row1["active_substance_list"] == ["Sub A", "Sub B"]
     row2 = result.row(1, named=True)
-    assert row2["active_substance_list"] == ["Sub C", "Sub D"] # Handled +
+    assert row2["active_substance_list"] == ["Sub C", "Sub D"]  # Handled +
 
     # Check ATC List
     assert row1["atc_code_list"] == ["A01", "B02"]
-    assert row2["atc_code_list"] == ["C03", "D04"] # Handled ,
+    assert row2["atc_code_list"] == ["C03", "D04"]  # Handled ,
 
     # Check Status
     assert row1["status_normalized"] == "APPROVED"
@@ -96,31 +100,34 @@ def test_enrich_epar_logic():
     assert row1["spor_mah_id"] == "ORG-100"
     assert row2["spor_mah_id"] == "ORG-200"
 
-def test_enrich_epar_no_match():
-    df = pl.DataFrame({
-        "product_number": ["EMEA/H/C/001234"],
-        "active_substance": ["A"],
-        "atc_code": ["A"],
-        "authorisation_status": ["Authorised"],
-        "marketing_authorisation_holder": ["Unique Name"]
-    })
 
-    spor_df = pl.DataFrame({
-        "name": ["Totally Different"],
-        "org_id": ["ORG-999"]
-    })
+def test_enrich_epar_no_match():
+    df = pl.DataFrame(
+        {
+            "product_number": ["EMEA/H/C/001234"],
+            "active_substance": ["A"],
+            "atc_code": ["A"],
+            "authorisation_status": ["Authorised"],
+            "marketing_authorisation_holder": ["Unique Name"],
+        }
+    )
+
+    spor_df = pl.DataFrame({"name": ["Totally Different"], "org_id": ["ORG-999"]})
 
     result = enrich_epar(df, spor_df)
     assert result["spor_mah_id"].item() is None
 
+
 def test_enrich_epar_empty_spor():
-    df = pl.DataFrame({
-        "product_number": ["EMEA/H/C/001234"],
-        "active_substance": ["A"],
-        "atc_code": ["A"],
-        "authorisation_status": ["Authorised"],
-        "marketing_authorisation_holder": ["Unique Name"]
-    })
+    df = pl.DataFrame(
+        {
+            "product_number": ["EMEA/H/C/001234"],
+            "active_substance": ["A"],
+            "atc_code": ["A"],
+            "authorisation_status": ["Authorised"],
+            "marketing_authorisation_holder": ["Unique Name"],
+        }
+    )
 
     spor_df = pl.DataFrame(schema={"name": pl.String, "org_id": pl.String})
 

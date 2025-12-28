@@ -1,9 +1,8 @@
-import pytest
 import pandas as pd
-import dlt
+import pytest
+
 from coreason_etl_epar.ingest import epar_index
-import os
-from unittest.mock import patch
+
 
 @pytest.fixture
 def dummy_excel_file(tmp_path):
@@ -25,7 +24,7 @@ def dummy_excel_file(tmp_path):
         "Exceptional circumstances": [False, False, False, False],
         "Authorisation status": ["Authorised", "Authorised", "Authorised", "Refused"],
         "Revision date": [None, None, None, None],
-        "URL": ["http://a.com", "http://v.com", "http://b.com", "http://c.com"]
+        "URL": ["http://a.com", "http://v.com", "http://b.com", "http://c.com"],
     }
 
     # Create Excel file using pandas (requires openpyxl)
@@ -33,6 +32,7 @@ def dummy_excel_file(tmp_path):
     df.to_excel(file_path, index=False)
 
     return str(file_path)
+
 
 def test_epar_index_resource(dummy_excel_file):
     # Iterate over the resource
@@ -55,9 +55,11 @@ def test_epar_index_resource(dummy_excel_file):
     assert row2["product_number"] == "EMEA/H/C/005678"
     assert row2["medicine_name"] == "Med C"
 
+
 def test_ingest_file_not_found():
     with pytest.raises(Exception):
         list(epar_index("non_existent_file.xlsx"))
+
 
 def test_ingest_missing_category_column(tmp_path):
     file_path = tmp_path / "bad_columns.xlsx"

@@ -1,9 +1,10 @@
-import pytest
-import dlt
-from coreason_etl_epar.ingest import spor_organisations
-import os
-import zipfile
 import xml.etree.ElementTree as ET
+import zipfile
+
+import pytest
+
+from coreason_etl_epar.ingest import spor_organisations
+
 
 @pytest.fixture
 def dummy_spor_zip(tmp_path):
@@ -35,7 +36,7 @@ def dummy_spor_zip(tmp_path):
     ET.SubElement(org3, "Name").text = "BioTech Inc"
     roles3 = ET.SubElement(org3, "Roles")
     role3a = ET.SubElement(roles3, "Role")
-    ET.SubElement(role3a, "Name").text = "Marketing authorisation holder" # Case insensitive check
+    ET.SubElement(role3a, "Name").text = "Marketing authorisation holder"  # Case insensitive check
 
     # Org 4: Valid MAH (Role text directly in Role node, not Name child - edge case support)
     org4 = ET.SubElement(root, "Organisation")
@@ -49,10 +50,11 @@ def dummy_spor_zip(tmp_path):
     xml_path = tmp_path / "export.xml"
     tree.write(xml_path)
 
-    with zipfile.ZipFile(zip_path, 'w') as z:
+    with zipfile.ZipFile(zip_path, "w") as z:
         z.write(xml_path, arcname="export.xml")
 
     return str(zip_path)
+
 
 def test_spor_organisations_resource(dummy_spor_zip):
     resource = spor_organisations(dummy_spor_zip)
@@ -69,25 +71,29 @@ def test_spor_organisations_resource(dummy_spor_zip):
     assert "ORG-1004" in ids
     assert "ORG-1002" not in ids
 
+
 def test_spor_no_xml(tmp_path):
     zip_path = tmp_path / "empty.zip"
-    with zipfile.ZipFile(zip_path, 'w') as z:
+    with zipfile.ZipFile(zip_path, "w") as z:
         z.writestr("readme.txt", "nothing here")
 
     resource = spor_organisations(str(zip_path))
     rows = list(resource)
     assert len(rows) == 0
 
+
 def test_spor_bad_zip(tmp_path):
     zip_path = tmp_path / "bad.zip"
-    with open(zip_path, 'wb') as f:
+    with open(zip_path, "wb") as f:
         f.write(b"not a zip")
 
     # Check that dlt raises ResourceExtractionError which wraps the BadZipFile (or the re-raised exception)
     from dlt.extract.exceptions import ResourceExtractionError
+
     with pytest.raises(ResourceExtractionError) as excinfo:
         list(spor_organisations(str(zip_path)))
     assert "File is not a zip file" in str(excinfo.value)
+
 
 def test_spor_general_exception(tmp_path):
     # This test is harder to trigger because zipfile handles opening.
@@ -96,6 +102,7 @@ def test_spor_general_exception(tmp_path):
 
     with patch("zipfile.ZipFile", side_effect=Exception("Generic Error")):
         from dlt.extract.exceptions import ResourceExtractionError
+
         with pytest.raises(ResourceExtractionError) as excinfo:
             list(spor_organisations("dummy_path"))
         assert "Generic Error" in str(excinfo.value)
