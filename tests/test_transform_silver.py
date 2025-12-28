@@ -6,8 +6,8 @@ import pytest
 from coreason_etl_epar.transform_silver import apply_scd2
 
 
-@pytest.fixture
-def empty_history():
+@pytest.fixture  # type: ignore[misc]
+def empty_history() -> pl.DataFrame:
     # Schema needs to match what we expect + overhead columns
     schema = {
         "id": pl.Int64,
@@ -20,7 +20,7 @@ def empty_history():
     return pl.DataFrame(schema=schema)
 
 
-def test_scd2_initial_load(empty_history):
+def test_scd2_initial_load(empty_history: pl.DataFrame) -> None:
     ts = datetime(2024, 1, 1)
     snapshot = pl.DataFrame({"id": [1, 2], "data": ["A", "B"]})
 
@@ -33,7 +33,7 @@ def test_scd2_initial_load(empty_history):
     assert "row_hash" in result.columns
 
 
-def test_scd2_no_change(empty_history):
+def test_scd2_no_change(empty_history: pl.DataFrame) -> None:
     ts1 = datetime(2024, 1, 1)
     ts2 = datetime(2024, 1, 2)
 
@@ -51,7 +51,7 @@ def test_scd2_no_change(empty_history):
     assert result["is_current"].item() is True
 
 
-def test_scd2_update(empty_history):
+def test_scd2_update(empty_history: pl.DataFrame) -> None:
     ts1 = datetime(2024, 1, 1)
     ts2 = datetime(2024, 1, 2)
 
@@ -77,7 +77,7 @@ def test_scd2_update(empty_history):
     assert new_rec["data"].item() == "A_Changed"
 
 
-def test_scd2_delete(empty_history):
+def test_scd2_delete(empty_history: pl.DataFrame) -> None:
     ts1 = datetime(2024, 1, 1)
     ts2 = datetime(2024, 1, 2)
 
@@ -95,7 +95,7 @@ def test_scd2_delete(empty_history):
     assert rec["valid_to"] == ts2
 
 
-def test_scd2_new_insert(empty_history):
+def test_scd2_new_insert(empty_history: pl.DataFrame) -> None:
     ts1 = datetime(2024, 1, 1)
     ts2 = datetime(2024, 1, 2)
 

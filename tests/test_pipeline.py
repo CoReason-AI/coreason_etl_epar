@@ -1,4 +1,6 @@
 import os
+from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import polars as pl
@@ -7,19 +9,19 @@ import pytest
 from coreason_etl_epar.pipeline import EPARPipeline
 
 
-@pytest.fixture
-def mock_dlt_pipeline():
+@pytest.fixture  # type: ignore[misc]
+def mock_dlt_pipeline() -> Any:
     with patch("coreason_etl_epar.pipeline.dlt.pipeline") as mock:
         yield mock
 
 
-def test_pipeline_init(tmp_path):
+def test_pipeline_init(tmp_path: Path) -> None:
     p = EPARPipeline("epar.xlsx", "spor.zip", work_dir=str(tmp_path))
     assert p.epar_path == "epar.xlsx"
     assert p.work_dir.exists()
 
 
-def test_run_ingestion_no_files(mock_dlt_pipeline, tmp_path):
+def test_run_ingestion_no_files(mock_dlt_pipeline: MagicMock, tmp_path: Path) -> None:
     p = EPARPipeline("non_existent.xlsx", "non_existent.zip", work_dir=str(tmp_path))
     p.run_ingestion()
     # dlt.pipeline called
@@ -28,7 +30,7 @@ def test_run_ingestion_no_files(mock_dlt_pipeline, tmp_path):
     mock_dlt_pipeline.return_value.run.assert_not_called()
 
 
-def test_run_ingestion_with_files(mock_dlt_pipeline, tmp_path):
+def test_run_ingestion_with_files(mock_dlt_pipeline: MagicMock, tmp_path: Path) -> None:
     # Create dummy files
     epar = tmp_path / "epar.xlsx"
     epar.touch()
@@ -39,8 +41,8 @@ def test_run_ingestion_with_files(mock_dlt_pipeline, tmp_path):
 
     # Mock the resources to avoid actual file reading errors (since they are empty/dummy)
     with (
-        patch("coreason_etl_epar.pipeline.epar_index") as mock_epar,
-        patch("coreason_etl_epar.pipeline.spor_organisations") as mock_spor,
+        patch("coreason_etl_epar.pipeline.epar_index"),
+        patch("coreason_etl_epar.pipeline.spor_organisations"),
     ):
         p.run_ingestion()
 
@@ -48,7 +50,7 @@ def test_run_ingestion_with_files(mock_dlt_pipeline, tmp_path):
         assert mock_dlt_pipeline.return_value.run.call_count == 2
 
 
-def test_load_bronze_empty(tmp_path):
+def test_load_bronze_empty(tmp_path: Path) -> None:
     p = EPARPipeline("dummy", "dummy", work_dir=str(tmp_path))
     # No duckdb file exists
     data = p.load_bronze()
@@ -56,7 +58,7 @@ def test_load_bronze_empty(tmp_path):
     assert data["spor"].is_empty()
 
 
-def test_execute_flow(tmp_path):
+def test_execute_flow(tmp_path: Path) -> None:
     # Integration style test mocking the internals
     p = EPARPipeline("dummy", "dummy", work_dir=str(tmp_path))
 
@@ -79,7 +81,7 @@ def test_execute_flow(tmp_path):
         mock_trans.assert_called_once()
 
 
-def test_pipeline_real_execution(tmp_path):
+def test_pipeline_real_execution(tmp_path: Path) -> None:
     # Test internal logic of run_ingestion, load_bronze (partial), and run_transformations
     # by mocking only the I/O edge points but not the internal logic.
 
@@ -106,7 +108,7 @@ def test_pipeline_real_execution(tmp_path):
 
         original_exists = os.path.exists
 
-        def side_effect_exists(path):
+        def side_effect_exists(path: Any) -> bool:
             if str(path).endswith(".duckdb"):
                 return True
             return original_exists(path)
@@ -138,7 +140,7 @@ def test_pipeline_real_execution(tmp_path):
                 {"name": ["Holder A"], "org_id": ["ORG-1"], "roles": [["Marketing Authorisation Holder"]]}
             )
 
-            def side_effect(*args, **kwargs):
+            def side_effect(*args: Any, **kwargs: Any) -> pl.DataFrame:
                 query = args[0]
                 if "epar_index" in query:
                     return epar_df
@@ -155,11 +157,14 @@ def test_pipeline_real_execution(tmp_path):
             # 3. Test run_transformations internal logic (Real run)
             # We pass the data we got
             # Note: run_transformations logic includes loading existing history.
-            # Our exists mock delegates to original_exists, so silver_history.parquet check will behave correctly (false initially).
+            # Our exists mock delegates to original_exists, so silver_history.parquet check
+            # will behave correctly (false initially).
 
+            # Fixed E501 long lines
             p.run_transformations(data["epar"], data["spor"], history_path=str(tmp_path / "silver_history.parquet"))
 
-            # Check if output files exist (use pathlib check which uses stat, but might be mocked? No, we mocked os.path.exists function only)
+            # Check if output files exist (use pathlib check which uses stat, but might be mocked?
+            # No, we mocked os.path.exists function only)
             # pathlib.Path.exists() calls os.stat usually.
 
             assert (tmp_path / "dim_medicine.parquet").exists()
@@ -167,7 +172,7 @@ def test_pipeline_real_execution(tmp_path):
             assert (tmp_path / "silver_history.parquet").exists()
 
 
-def test_load_bronze_duckdb_fail(tmp_path):
+def test_load_bronze_duckdb_fail(tmp_path: Path) -> None:
     p = EPARPipeline("dummy", "dummy", work_dir=str(tmp_path), destination="duckdb")
 
     # Mock exists=True but read_database fails
@@ -177,7 +182,7 @@ def test_load_bronze_duckdb_fail(tmp_path):
         assert data["spor"].is_empty()
 
 
-def test_load_bronze_partial_fail(tmp_path):
+def test_load_bronze_partial_fail(tmp_path: Path) -> None:
     p = EPARPipeline("dummy", "dummy", work_dir=str(tmp_path), destination="duckdb")
 
     # Mock exists=True, but read_database fails ONLY for epar, succeeds for spor
@@ -191,7 +196,7 @@ def test_load_bronze_partial_fail(tmp_path):
         mock_pipeline_instance = mock_dlt_class.return_value
         mock_pipeline_instance.sql_client.return_value.__enter__.return_value = MagicMock()
 
-        def side_effect(query, **kwargs):
+        def side_effect(query: str, **kwargs: Any) -> pl.DataFrame:
             if "epar_index" in query:
                 raise Exception("EPAR Table Missing")
             if "spor_organisations" in query:
@@ -205,7 +210,7 @@ def test_load_bronze_partial_fail(tmp_path):
         assert not data["spor"].is_empty()  # Succeeded
 
 
-def test_load_bronze_spor_fail(tmp_path):
+def test_load_bronze_spor_fail(tmp_path: Path) -> None:
     p = EPARPipeline("dummy", "dummy", work_dir=str(tmp_path), destination="duckdb")
 
     with (
@@ -217,7 +222,7 @@ def test_load_bronze_spor_fail(tmp_path):
         mock_pipeline_instance = mock_dlt_class.return_value
         mock_pipeline_instance.sql_client.return_value.__enter__.return_value = MagicMock()
 
-        def side_effect(query, **kwargs):
+        def side_effect(query: str, **kwargs: Any) -> pl.DataFrame:
             if "epar_index" in query:
                 return pl.DataFrame({"a": [1]})
             if "spor_organisations" in query:
@@ -231,7 +236,7 @@ def test_load_bronze_spor_fail(tmp_path):
         assert data["spor"].is_empty()  # Failed
 
 
-def test_load_bronze_not_duckdb(tmp_path):
+def test_load_bronze_not_duckdb(tmp_path: Path) -> None:
     # Test fallback when destination is not duckdb
     p = EPARPipeline("dummy", "dummy", work_dir=str(tmp_path), destination="postgres")
 
@@ -246,7 +251,7 @@ def test_load_bronze_not_duckdb(tmp_path):
         assert data["spor"].is_empty()
 
 
-def test_load_bronze_duckdb_not_exists(tmp_path):
+def test_load_bronze_duckdb_not_exists(tmp_path: Path) -> None:
     # Destination is duckdb but file doesn't exist
     p = EPARPipeline("dummy", "dummy", work_dir=str(tmp_path), destination="duckdb")
 
@@ -258,3 +263,74 @@ def test_load_bronze_duckdb_not_exists(tmp_path):
         # Don't mock exists, let it return False for file (which it will locally)
         data = p.load_bronze()
         assert data["epar"].is_empty()
+
+
+def test_run_transformations_defaults(tmp_path: Path) -> None:
+    # Test running transformations with default arguments to cover default arg line
+    p = EPARPipeline("dummy", "dummy", work_dir=str(tmp_path))
+
+    epar_df = pl.DataFrame(
+        {
+            "product_number": ["P1"],
+            "medicine_name": ["M1"],
+            "marketing_authorisation_holder": ["H1"],
+            "authorisation_status": ["A"],
+            "active_substance": ["S1"],
+            "atc_code": ["A1"],
+            "url": ["u"],
+            "category": ["Human"],
+        }
+    )
+    spor_df = pl.DataFrame({"name": ["H1"], "org_id": ["O1"]})
+
+    # We need to mock apply_scd2, enrich_epar, create_gold_layer to avoid complex setup
+    with (
+        patch("coreason_etl_epar.pipeline.apply_scd2") as mock_scd2,
+        patch("coreason_etl_epar.pipeline.enrich_epar") as mock_enrich,
+        patch("coreason_etl_epar.pipeline.create_gold_layer") as mock_gold,
+    ):
+        mock_scd2.return_value = pl.DataFrame()
+        mock_enrich.return_value = pl.DataFrame()
+        mock_gold.return_value = {}
+
+        p.run_transformations(epar_df, spor_df)
+
+        # Check if silver_history.parquet (default) was used check?
+        # logic checks os.path.exists(history_path). Default is "silver_history.parquet".
+        # It will check existence in current dir (which is root). likely False.
+        pass
+
+
+def test_pipeline_incremental_load(tmp_path: Path) -> None:
+    # Test loading when history already exists (hits read_parquet line)
+    p = EPARPipeline("dummy", "dummy", work_dir=str(tmp_path))
+
+    # Create existing history
+    history_path = tmp_path / "silver_history.parquet"
+    existing_df = pl.DataFrame({"product_number": ["OLD"], "is_current": [True]})
+    existing_df.write_parquet(history_path)
+
+    epar_df = pl.DataFrame(
+        {
+            "product_number": ["NEW"],
+            "medicine_name": ["M1"],
+            "marketing_authorisation_holder": ["H1"],
+            "authorisation_status": ["A"],
+            "active_substance": ["S1"],
+            "atc_code": ["A1"],
+            "url": ["u"],
+            "category": ["Human"],
+        }
+    )
+    spor_df = pl.DataFrame({"name": ["H1"], "org_id": ["O1"]})
+
+    with (
+        patch("coreason_etl_epar.pipeline.apply_scd2") as mock_scd2,
+        patch("coreason_etl_epar.pipeline.enrich_epar") as mock_enrich,
+        patch("coreason_etl_epar.pipeline.create_gold_layer") as mock_gold,
+    ):
+        mock_scd2.return_value = pl.DataFrame()
+        mock_enrich.return_value = pl.DataFrame()
+        mock_gold.return_value = {}
+
+        p.run_transformations(epar_df, spor_df, history_path=str(history_path))

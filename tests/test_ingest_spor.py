@@ -1,13 +1,15 @@
 import xml.etree.ElementTree as ET
 import zipfile
+from pathlib import Path
 
 import pytest
+from dlt.extract.exceptions import ResourceExtractionError
 
 from coreason_etl_epar.ingest import spor_organisations
 
 
-@pytest.fixture
-def dummy_spor_zip(tmp_path):
+@pytest.fixture  # type: ignore[misc]
+def dummy_spor_zip(tmp_path: Path) -> str:
     zip_path = tmp_path / "spor.zip"
 
     # Create XML content
@@ -56,7 +58,7 @@ def dummy_spor_zip(tmp_path):
     return str(zip_path)
 
 
-def test_spor_organisations_resource(dummy_spor_zip):
+def test_spor_organisations_resource(dummy_spor_zip: str) -> None:
     resource = spor_organisations(dummy_spor_zip)
     rows = list(resource)
 
@@ -72,7 +74,7 @@ def test_spor_organisations_resource(dummy_spor_zip):
     assert "ORG-1002" not in ids
 
 
-def test_spor_no_xml(tmp_path):
+def test_spor_no_xml(tmp_path: Path) -> None:
     zip_path = tmp_path / "empty.zip"
     with zipfile.ZipFile(zip_path, "w") as z:
         z.writestr("readme.txt", "nothing here")
@@ -82,27 +84,23 @@ def test_spor_no_xml(tmp_path):
     assert len(rows) == 0
 
 
-def test_spor_bad_zip(tmp_path):
+def test_spor_bad_zip(tmp_path: Path) -> None:
     zip_path = tmp_path / "bad.zip"
     with open(zip_path, "wb") as f:
         f.write(b"not a zip")
 
-    # Check that dlt raises ResourceExtractionError which wraps the BadZipFile (or the re-raised exception)
-    from dlt.extract.exceptions import ResourceExtractionError
-
+    # Check that dlt raises ResourceExtractionError which wraps the BadZipFile
     with pytest.raises(ResourceExtractionError) as excinfo:
         list(spor_organisations(str(zip_path)))
     assert "File is not a zip file" in str(excinfo.value)
 
 
-def test_spor_general_exception(tmp_path):
+def test_spor_general_exception(tmp_path: Path) -> None:
     # This test is harder to trigger because zipfile handles opening.
     # We can mock zipfile.ZipFile to raise a generic exception
     from unittest.mock import patch
 
     with patch("zipfile.ZipFile", side_effect=Exception("Generic Error")):
-        from dlt.extract.exceptions import ResourceExtractionError
-
         with pytest.raises(ResourceExtractionError) as excinfo:
             list(spor_organisations("dummy_path"))
         assert "Generic Error" in str(excinfo.value)

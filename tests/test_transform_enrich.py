@@ -3,7 +3,7 @@ import polars as pl
 from coreason_etl_epar.transform_enrich import enrich_epar, jaro_winkler, normalize_status
 
 
-def test_jaro_winkler():
+def test_jaro_winkler() -> None:
     # Exact match
     assert jaro_winkler("test", "test") == 1.0
     # No match
@@ -48,7 +48,7 @@ def test_jaro_winkler():
     assert jaro_winkler("ABC", "XBC") > 0.0  # Match logic
 
 
-def test_normalize_status():
+def test_normalize_status() -> None:
     assert normalize_status("Authorised") == "APPROVED"
     assert normalize_status(" Conditional ") == "CONDITIONAL_APPROVAL"
     assert normalize_status("Exceptional Circumstances") == "EXCEPTIONAL_CIRCUMSTANCES"
@@ -58,7 +58,7 @@ def test_normalize_status():
     assert normalize_status("Unknown Status") == "UNKNOWN"
 
 
-def test_enrich_epar_logic():
+def test_enrich_epar_logic() -> None:
     # Setup Data
     df = pl.DataFrame(
         {
@@ -101,7 +101,7 @@ def test_enrich_epar_logic():
     assert row2["spor_mah_id"] == "ORG-200"
 
 
-def test_enrich_epar_no_match():
+def test_enrich_epar_no_match() -> None:
     df = pl.DataFrame(
         {
             "product_number": ["EMEA/H/C/001234"],
@@ -118,7 +118,7 @@ def test_enrich_epar_no_match():
     assert result["spor_mah_id"].item() is None
 
 
-def test_enrich_epar_empty_spor():
+def test_enrich_epar_empty_spor() -> None:
     df = pl.DataFrame(
         {
             "product_number": ["EMEA/H/C/001234"],

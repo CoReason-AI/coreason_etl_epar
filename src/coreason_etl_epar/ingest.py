@@ -1,4 +1,6 @@
-from typing import Any, Dict, Iterator
+import xml.etree.ElementTree as ET
+import zipfile
+from typing import Any, Dict, Iterator, List
 
 import dlt
 import polars as pl
@@ -8,7 +10,7 @@ from pydantic import ValidationError
 from coreason_etl_epar.schema import EPARSourceRow
 
 
-@dlt.resource(name="epar_index", write_disposition="replace")
+@dlt.resource(name="epar_index", write_disposition="replace")  # type: ignore[misc]
 def epar_index(file_path: str) -> Iterator[Dict[str, Any]]:
     """
     DLT Resource to ingest EPAR Index from Excel.
@@ -24,14 +26,9 @@ def epar_index(file_path: str) -> Iterator[Dict[str, Any]]:
         raise
 
     # Clean column names (normalize to snake_case for Pydantic mapping)
-    # The actual Excel columns might contain spaces or different casing.
-    # For this implementation, I will assume a mapping or normalize them.
-    # Based on the schema: Category, Medicine name, Product number, etc.
-    # Let's simple snake_case normalization
     df = df.rename({col: col.strip().lower().replace(" ", "_") for col in df.columns})
 
     # Filter for 'Human' category
-    # Note: The source file column is likely 'Category'
     if "category" not in df.columns:
         logger.error("Column 'category' not found in Excel file")
         return
@@ -40,48 +37,15 @@ def epar_index(file_path: str) -> Iterator[Dict[str, Any]]:
 
     for row in filtered_df.iter_rows(named=True):
         try:
-            # We map keys to match our Pydantic model if necessary.
-            # Assuming the normalized headers match the model fields for now.
-            # Explicit mapping might be needed if source headers differ significantly.
-            # For now, we trust the normalization.
-
-            # Additional Field Mapping adjustments if needed
-            # e.g. "marketing_authorisation_holder" might be "marketing_authorisation_holder_company_name" in source
-            # I will stick to the normalized names for now and refine if I see the actual source.
-
-            # Yield dictionary. DLT with Pydantic contract would handle validation,
-            # but per FRD "Rows failing schema validation must be routed to _quarantine"
-            # dlt's default behavior with a schema contract is to raise or quarantine.
-            # Here I will validate manually to log/quarantine if needed or just yield
-            # and let dlt schema contract handle it if configured.
-            # The FRD implies logic.
-
-            # Let's try to instantiate the model to validate, then yield dict
             validated_row = EPARSourceRow(**row)
             yield validated_row.model_dump()
 
         except ValidationError as e:
             logger.warning(f"Validation failed for row {row.get('product_number', 'UNKNOWN')}: {e}")
-            # In a real dlt pipeline, we might yield to a separate resource or
-            # rely on dlt's contract failure policy.
-            # For this atomic unit, I will log and skip, or yield a special error record if dlt allows.
-            # But the FRD says "routed to _quarantine". dlt has a feature for this.
-            # I will just yield the raw row to a separate 'quarantine' resource?
-            # Or just let dlt handle it.
-            # I will assume dlt schema contract will be applied in the pipeline definition.
-            # BUT, the prompt says "Validation: Rows failing schema validation must be routed to _quarantine".
-            # I'll implement a simple try-except and maybe yield to a side output or just log for now
-            # as setting up the full dlt pipeline with quarantine is a bigger scope.
-            # Wait, I can yield to a different table name (resource) dynamically?
-            # Yes, dlt allows yielding dlt.mark.with_table_name(row, "quarantine")
             pass
 
 
-import xml.etree.ElementTree as ET
-import zipfile
-
-
-@dlt.resource(name="spor_organisations", write_disposition="replace")
+@dlt.resource(name="spor_organisations", write_disposition="replace")  # type: ignore[misc]
 def spor_organisations(file_path: str) -> Iterator[Dict[str, Any]]:
     """
     DLT Resource to ingest SPOR Organisations from a Zip containing XML.
@@ -101,26 +65,10 @@ def spor_organisations(file_path: str) -> Iterator[Dict[str, Any]]:
                 # Use iterparse for memory efficiency on large XML
                 context = ET.iterparse(f, events=("end",))
 
-                # Assuming structure:
-                # <organisations>
-                #   <organisation>
-                #     <id>...</id>
-                #     <name>...</name>
-                #     <roles>
-                #       <role>Marketing Authorisation Holder</role>
-                #     </roles>
-                #   </organisation>
-                # </organisations>
-
-                # Note: SPOR XML structure is complex. I will implement a robust search
-                # for Organisation elements and their roles.
-                # Adjust tag names based on actual schema if known.
-                # For now, I'll use a generic approach looking for 'Organisation' tags.
-
-                for event, elem in context:
+                for _event, elem in context:
                     if elem.tag.endswith("rganisation"):  # Handle potential namespace prefixes
-                        org_data = {}
-                        roles = []
+                        org_data: Dict[str, Any] = {}
+                        roles: List[str] = []
 
                         # Extract children data
                         for child in elem:

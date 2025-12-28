@@ -1,11 +1,13 @@
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
 from coreason_etl_epar.ingest import epar_index
 
 
-@pytest.fixture
-def dummy_excel_file(tmp_path):
+@pytest.fixture  # type: ignore[misc]
+def dummy_excel_file(tmp_path: Path) -> str:
     file_path = tmp_path / "medicines.xlsx"
 
     # Create a DataFrame with some valid and invalid data
@@ -34,7 +36,7 @@ def dummy_excel_file(tmp_path):
     return str(file_path)
 
 
-def test_epar_index_resource(dummy_excel_file):
+def test_epar_index_resource(dummy_excel_file: str) -> None:
     # Iterate over the resource
     resource = epar_index(dummy_excel_file)
     rows = list(resource)
@@ -56,12 +58,25 @@ def test_epar_index_resource(dummy_excel_file):
     assert row2["medicine_name"] == "Med C"
 
 
-def test_ingest_file_not_found():
-    with pytest.raises(Exception):
+def test_ingest_file_not_found() -> None:
+    # Blind exception check fixed
+    # We expect a specific error if possible, but dlt/polars might raise different ones.
+    # Polars raises FileNotFoundError or ComputeError.
+    # dlt might wrap it.
+    # The previous ruff error was B017: Do not assert blind exception: `Exception`.
+    # I should use `pytest.raises(Exception)` but inspect the message, OR catch specific exceptions.
+    # But `polars` exceptions are custom.
+    # I'll try to assert specific message part if I catch Exception.
+
+    with pytest.raises(Exception) as excinfo:
         list(epar_index("non_existent_file.xlsx"))
 
+    # Check if message contains something relevant
+    msg = str(excinfo.value)
+    assert "No such file" in msg or "does not exist" in msg or "no workbook found" in msg
 
-def test_ingest_missing_category_column(tmp_path):
+
+def test_ingest_missing_category_column(tmp_path: Path) -> None:
     file_path = tmp_path / "bad_columns.xlsx"
     df = pd.DataFrame({"Wrong Col": [1, 2, 3]})
     df.to_excel(file_path, index=False)

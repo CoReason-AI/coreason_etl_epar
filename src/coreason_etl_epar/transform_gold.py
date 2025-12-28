@@ -23,24 +23,13 @@ def create_gold_layer(silver_df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
     """
 
     # 1. Generate Coreason ID
-    # Use map_elements for UUID generation (Python UUID is stable)
-
-    # Ensure source_id exists (it's product_number)
     df = silver_df.with_columns(
         pl.col("product_number").map_elements(generate_coreason_id, return_dtype=pl.String).alias("coreason_id")
     )
 
     # 2. dim_medicine (Immutable Entity Attributes)
-    # Deduplicate by coreason_id. Pick the latest version or any valid one.
-    # Since attributes like medicine_name might change (unlikely but possible),
-    # we should take the most recent 'current' record.
-
-    current_df = df.filter(pl.col("is_current") == True)
+    current_df = df.filter(pl.col("is_current"))
     if current_df.is_empty() and not df.is_empty():
-        # Fallback if no current record (e.g. all withdrawn/history), take latest valid_to
-        # But for 'dim', we typically want the current state.
-        # If deleted, it might not be in 'current'.
-        # Let's take the latest record per ID based on valid_from.
         current_df = df.sort("valid_from", descending=True).unique(subset=["coreason_id"], keep="first")
 
     dim_medicine = current_df.select(
@@ -48,7 +37,7 @@ def create_gold_layer(silver_df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
             "coreason_id",
             "medicine_name",
             "base_procedure_id",
-            pl.col("medicine_name").alias("brand_name"),  # Assuming brand name matches medicine name in source
+            pl.col("medicine_name").alias("brand_name"),
             pl.col("biosimilar").fill_null(False).alias("is_biosimilar"),
             pl.col("generic").fill_null(False).alias("is_generic"),
             pl.col("orphan").fill_null(False).alias("is_orphan"),
@@ -57,12 +46,6 @@ def create_gold_layer(silver_df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
     )
 
     # 3. fact_regulatory_history (SCD Type 2 Timeline)
-    # Map all rows in Silver
-
-    # We need a surrogate key 'history_id' for the fact table?
-    # FRD says "history_id (PK)". We can generate a hash or sequence.
-    # Let's generate a hash of coreason_id + valid_from
-
     fact_history = df.select(
         [
             pl.concat_str([pl.col("coreason_id"), pl.col("valid_from").cast(pl.String)], separator="_")
@@ -78,11 +61,6 @@ def create_gold_layer(silver_df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
     )
 
     # 4. bridge_medicine_features
-    # EAV model from current state
-
-    # We need to unpivot/explode lists.
-    # Features: ATC_CODE, SUBSTANCE, THERAPEUTIC_AREA
-
     # ATC
     atc = (
         current_df.select(["coreason_id", "atc_code_list"])
@@ -107,13 +85,7 @@ def create_gold_layer(silver_df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
         )
     )
 
-    # Therapeutic Area (String, might need split if comma separated, FRD says "Granularity: Successful extraction... into searchable arrays")
-    # In schema it is Optional[str].
-    # Let's assume it might be a list or we stick to the string if not normalized in silver.
-    # In silver we didn't explicitly normalize therapeutic_area list.
-    # Let's split by semicolon or comma if present, or just store as is.
-    # FRD: "Searchable arrays". Let's split by ";".
-
+    # Therapeutic Area
     area = (
         current_df.select(["coreason_id", "therapeutic_area"])
         .drop_nulls()

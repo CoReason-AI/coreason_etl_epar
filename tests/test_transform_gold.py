@@ -97,8 +97,10 @@ def test_gold_layer_therapeutic_split() -> None:
 
 
 def test_gold_fallback_no_current() -> None:
-    # Test defensive line: current_df = df.sort("valid_from", descending=True).unique(subset=["coreason_id"], keep="first")
-    # This check confirms fallback behavior.
+    # Test defensive line:
+    # current_df = df.sort("valid_from", descending=True).unique(subset=["coreason_id"], keep="first")
+    # This checks the fallback logic when no record is marked as current
+
     silver_df = pl.DataFrame(
         {
             "product_number": ["P1", "P1"],

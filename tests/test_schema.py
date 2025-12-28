@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from coreason_etl_epar.schema import EPARSourceRow
 
 
-def test_valid_epar_source_row():
+def test_valid_epar_source_row() -> None:
     data = {
         "category": "Human",
         "product_number": "EMEA/H/C/001234",
@@ -29,7 +29,7 @@ def test_valid_epar_source_row():
     assert row.category == "Human"
 
 
-def test_optional_fields():
+def test_optional_fields() -> None:
     data = {
         "category": "Human",
         "product_number": "EMEA/H/C/005678",
@@ -46,7 +46,7 @@ def test_optional_fields():
     assert row.generic is False  # Default value
 
 
-def test_invalid_category():
+def test_invalid_category() -> None:
     data = {
         "category": "Veterinary",
         "product_number": "EMEA/V/C/001234",
@@ -61,7 +61,7 @@ def test_invalid_category():
     assert "Input should be 'Human'" in str(excinfo.value)
 
 
-def test_invalid_product_number_format():
+def test_invalid_product_number_format() -> None:
     data = {
         "category": "Human",
         "product_number": "INVALID/123",

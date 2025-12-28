@@ -1,3 +1,5 @@
+from typing import Dict
+
 import polars as pl
 
 
@@ -151,7 +153,7 @@ def enrich_epar(df: pl.DataFrame, spor_df: pl.DataFrame) -> pl.DataFrame:
     # Use map_elements with jaro_winkler
     # This is expensive, so we do it on unique names (small set)
 
-    def calc_dist(struct):
+    def calc_dist(struct: Dict[str, str]) -> float:
         return jaro_winkler(struct["marketing_authorisation_holder"].lower(), struct["spor_name"].lower())
 
     cross = cross.with_columns(
