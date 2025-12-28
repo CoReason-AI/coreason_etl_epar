@@ -126,3 +126,54 @@ def test_gold_fallback_no_current() -> None:
     assert dim.height == 1
     # Should pick the one with latest valid_from (M1_new)
     assert dim["medicine_name"].item() == "M1_new"
+
+
+def test_gold_empty_lists() -> None:
+    # Silver data has empty lists for substance/ATC.
+    # Gold bridge table should not fail, just have fewer rows.
+
+    # Define schema explicitly to avoid Null type inference
+    schema = {
+        "product_number": pl.String,
+        "medicine_name": pl.String,
+        "base_procedure_id": pl.String,
+        "biosimilar": pl.Boolean,
+        "generic": pl.Boolean,
+        "orphan": pl.Boolean,
+        "url": pl.String,
+        "status_normalized": pl.String,
+        "valid_from": pl.Datetime,
+        "valid_to": pl.Datetime,
+        "is_current": pl.Boolean,
+        "spor_mah_id": pl.String,
+        "active_substance_list": pl.List(pl.String),
+        "atc_code_list": pl.List(pl.String),
+        "therapeutic_area": pl.String,
+    }
+
+    silver_df = pl.DataFrame(
+        {
+            "product_number": ["P1"],
+            "medicine_name": ["M1"],
+            "base_procedure_id": ["1"],
+            "biosimilar": [False],
+            "generic": [False],
+            "orphan": [False],
+            "url": ["u"],
+            "status_normalized": ["A"],
+            "valid_from": [datetime(2024, 1, 1)],
+            "valid_to": [None],
+            "is_current": [True],
+            "spor_mah_id": ["O1"],
+            "active_substance_list": [[]],  # Empty
+            "atc_code_list": [[]],  # Empty
+            "therapeutic_area": [None],  # Null
+        },
+        schema=schema,
+    )
+
+    gold = create_gold_layer(silver_df)
+    bridge = gold["bridge_medicine_features"]
+
+    # Should be empty because all inputs are empty/null
+    assert bridge.height == 0

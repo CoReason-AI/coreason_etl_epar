@@ -118,6 +118,46 @@ def test_enrich_epar_no_match() -> None:
     assert result["spor_mah_id"].item() is None
 
 
+def test_enrich_tie_breaker_determinism() -> None:
+    # Setup: 1 EPAR MAH, 2 SPOR MAHs with IDENTICAL names (score 1.0) but different IDs.
+    # We want deterministic choice (lowest ID).
+
+    df = pl.DataFrame(
+        {
+            "product_number": ["P1"],
+            "medicine_name": ["M1"],
+            "marketing_authorisation_holder": ["Pharma Corp"],
+            "active_substance": ["S1"],
+            "atc_code": ["A1"],
+            "authorisation_status": ["Authorised"],
+            "url": ["u"],
+        }
+    )
+
+    # SPOR data with duplicates or very similar
+    spor_df = pl.DataFrame(
+        {
+            "name": ["Pharma Corp", "Pharma Corp"],
+            "org_id": ["ORG-002", "ORG-001"],  # ORG-001 should be picked if sorting by ID ascending
+        }
+    )
+
+    result = enrich_epar(df, spor_df)
+
+    # Assert
+    assert result["spor_mah_id"].item() == "ORG-001"
+
+
+def test_unicode_handling() -> None:
+    # Enrichment (Jaro-Winkler with unicode)
+    # "Société" vs "Societe"
+    # Matches: S,o,c,i,t (5). é vs e is mismatch.
+    # Should calculate a score.
+    # Just ensure it doesn't crash.
+    score = jaro_winkler("Société", "Societe")
+    assert score > 0.0
+
+
 def test_enrich_epar_empty_spor() -> None:
     df = pl.DataFrame(
         {

@@ -117,3 +117,101 @@ def test_scd2_new_insert(empty_history: pl.DataFrame) -> None:
     rec2 = result.filter(pl.col("id") == 2).row(0, named=True)
     assert rec2["is_current"] is True
     assert rec2["valid_from"] == ts2
+
+
+def test_scd2_resurrection() -> None:
+    # History: Record ID=1 is CLOSED (valid_to is set, is_current=False)
+    # Snapshot: Record ID=1 reappears.
+    # Expected: New active record inserted. Old one stays closed.
+
+    schema = {
+        "id": pl.Int64,
+        "data": pl.String,
+        "valid_from": pl.Datetime,
+        "valid_to": pl.Datetime,
+        "is_current": pl.Boolean,
+        "row_hash": pl.String,
+    }
+
+    ts_old = datetime(2023, 1, 1)
+    ts_close = datetime(2023, 2, 1)
+    ts_new = datetime(2024, 1, 1)
+
+    history = pl.DataFrame(
+        {
+            "id": [1],
+            "data": ["A"],
+            "valid_from": [ts_old],
+            "valid_to": [ts_close],
+            "is_current": [False],
+            "row_hash": ["hash_A"],
+        },
+        schema=schema,
+    )
+
+    snapshot = pl.DataFrame({"id": [1], "data": ["A"]})
+
+    result = apply_scd2(snapshot, history, "id", ts_new, ["data"])
+
+    # Check results: Should have 2 rows.
+    # 1. Old closed row.
+    # 2. New open row.
+
+    assert result.height == 2
+
+    # Old row check
+    old_row = result.filter(pl.col("valid_from") == ts_old)
+    assert old_row["is_current"].item() is False
+    assert old_row["valid_to"].item() == ts_close
+
+    # New row check
+    new_row = result.filter(pl.col("valid_from") == ts_new)
+    assert new_row["is_current"].item() is True
+    assert new_row["valid_to"].item() is None
+
+
+def test_scd2_flapping() -> None:
+    # History: A -> B (Active is B).
+    # Snapshot: A (Reverting to old value).
+    # Expected: Close B, Insert A (new version).
+
+    schema = {
+        "id": pl.Int64,
+        "data": pl.String,
+        "valid_from": pl.Datetime,
+        "valid_to": pl.Datetime,
+        "is_current": pl.Boolean,
+        "row_hash": pl.String,
+    }
+
+    ts1 = datetime(2024, 1, 1)
+    ts2 = datetime(2024, 1, 2)
+    ts3 = datetime(2024, 1, 3)
+
+    history = pl.DataFrame(
+        {
+            "id": [1, 1],
+            "data": ["A", "B"],
+            "valid_from": [ts1, ts2],
+            "valid_to": [ts2, None],
+            "is_current": [False, True],
+            "row_hash": ["hash_A", "hash_B"],  # Mock hashes
+        },
+        schema=schema,
+    )
+
+    snapshot = pl.DataFrame({"id": [1], "data": ["A"]})  # Back to A
+
+    result = apply_scd2(snapshot, history, "id", ts3, ["data"])
+
+    assert result.height == 3
+
+    # Verify B is closed
+    row_b = result.filter(pl.col("valid_from") == ts2)
+    assert row_b["is_current"].item() is False
+    assert row_b["valid_to"].item() == ts3
+
+    # Verify new A is open
+    row_a_new = result.filter(pl.col("valid_from") == ts3)
+    assert row_a_new["is_current"].item() is True
+    assert row_a_new["data"].item() == "A"

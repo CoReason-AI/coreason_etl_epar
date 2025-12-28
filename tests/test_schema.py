@@ -74,3 +74,23 @@ def test_invalid_product_number_format() -> None:
     with pytest.raises(ValidationError) as excinfo:
         EPARSourceRow(**data)
     assert "Invalid EMA Product Number format" in str(excinfo.value)
+
+
+def test_pydantic_invalid_date_format() -> None:
+    # Source provides date as "2024/01/01" but we expect it to be parsed.
+    # Pydantic usually handles standard ISO. If dlt provides strings, Pydantic might coerce.
+    # But if format is completely wrong "NotADate", it should fail.
+
+    data = {
+        "category": "Human",
+        "product_number": "EMEA/H/C/001",
+        "medicine_name": "M",
+        "marketing_authorisation_holder": "H",
+        "active_substance": "S",
+        "authorisation_status": "A",
+        "url": "u",
+        "revision_date": "NotADate",  # Invalid
+    }
+
+    with pytest.raises(ValidationError):
+        EPARSourceRow(**data)

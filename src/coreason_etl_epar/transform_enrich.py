@@ -165,7 +165,7 @@ def enrich_epar(df: pl.DataFrame, spor_df: pl.DataFrame) -> pl.DataFrame:
     # Filter > 0.90 and pick best match
     matches = (
         cross.filter(pl.col("score") > 0.90)
-        .sort("score", descending=True)
+        .sort(["score", "spor_id"], descending=[True, False])
         .unique(subset=["marketing_authorisation_holder"], keep="first")
         .select(["marketing_authorisation_holder", "spor_id"])
     )
