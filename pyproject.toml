@@ -10,6 +10,12 @@ packages = [{include = "coreason_etl_epar", from = "src"}]
 [tool.poetry.dependencies]
 python = ">=3.12, <3.15"
 loguru = "^0.7.2"
+dlt = "^1.20.0"
+polars = "^1.36.1"
+pydantic = "^2.12.5"
+openpyxl = "^3.1.5"
+pandas = "^2.3.3"
+fastexcel = "^0.18.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2.2"
@@ -63,3 +69,15 @@ testpaths = ["tests"]
 
 [tool.coverage.run]
 omit = ["tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:"
+]
