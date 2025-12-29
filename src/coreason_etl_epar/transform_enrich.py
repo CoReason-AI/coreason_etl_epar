@@ -115,6 +115,7 @@ def enrich_epar(df: pl.DataFrame, spor_df: pl.DataFrame) -> pl.DataFrame:
         .str.replace_all(r"\+", "/")
         .str.split("/")
         .list.eval(pl.element().str.strip_chars())
+        .list.eval(pl.element().filter(pl.element().str.len_chars() > 0))  # Filter empty strings
         .alias("active_substance_list")
     )
 
@@ -124,9 +125,11 @@ def enrich_epar(df: pl.DataFrame, spor_df: pl.DataFrame) -> pl.DataFrame:
     lf = lf.with_columns(
         pl.col("atc_code")
         .cast(pl.String)
+        .str.to_uppercase()  # Normalize to uppercase before validation
         .str.replace_all(r",", ";")
         .str.split(";")
         .list.eval(pl.element().str.strip_chars())
+        .list.eval(pl.element().filter(pl.element().str.len_chars() > 0))  # Filter empty strings
         .list.eval(pl.element().filter(pl.element().str.contains(r"^[A-Z]\d{2}[A-Z]{2}\d{2}$")))
         .alias("atc_code_list")
     )
