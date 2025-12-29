@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Iterator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -7,8 +8,8 @@ import requests
 from coreason_etl_epar.downloader import URL_EPAR_INDEX, URL_SPOR_EXPORT, download_file, fetch_sources
 
 
-@pytest.fixture
-def mock_requests_get():
+@pytest.fixture  # type: ignore[misc]
+def mock_requests_get() -> Iterator[MagicMock]:
     with patch("requests.get") as mock_get:
         yield mock_get
 
