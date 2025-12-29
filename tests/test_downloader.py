@@ -1,9 +1,10 @@
 from pathlib import Path
-from typing import Iterator
+from typing import Any, Iterator
 from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
+from requests.adapters import HTTPAdapter
 
 from coreason_etl_epar.downloader import download_file, fetch_sources
 
@@ -60,7 +61,7 @@ def test_download_file_atomic_write_failure(tmp_path: Path, mock_session_get: Ma
     mock_response.status_code = 200
 
     # iter_content yields one chunk then raises error
-    def side_effect(*args, **kwargs):
+    def side_effect(*args: Any, **kwargs: Any) -> Iterator[bytes]:
         yield b"chunk1"
         raise requests.exceptions.ChunkedEncodingError("Stream broken")
 
@@ -117,5 +118,8 @@ def test_session_configuration() -> None:
 
     s = get_session(retries=5)
     adapter = s.get_adapter("https://")
+
+    # BaseAdapter doesn't imply max_retries, but HTTPAdapter does.
+    assert isinstance(adapter, HTTPAdapter)
     assert adapter.max_retries.total == 5
     s.close()
