@@ -64,7 +64,7 @@ def test_enrich_epar_logic() -> None:
         {
             "product_number": ["EMEA/H/C/001234", "EMEA/H/C/999"],
             "active_substance": ["Sub A / Sub B", "Sub C + Sub D"],
-            "atc_code": ["A01;B02", "C03,D04"],
+            "atc_code": ["A01BC01;B02AA02", "C03BB03,D04CC04"],
             "authorisation_status": ["Authorised", "Refused"],
             "marketing_authorisation_holder": ["Pharma Corp", "BioTech Inc"],
         }
@@ -88,8 +88,8 @@ def test_enrich_epar_logic() -> None:
     assert row2["active_substance_list"] == ["Sub C", "Sub D"]  # Handled +
 
     # Check ATC List
-    assert row1["atc_code_list"] == ["A01", "B02"]
-    assert row2["atc_code_list"] == ["C03", "D04"]  # Handled ,
+    assert row1["atc_code_list"] == ["A01BC01", "B02AA02"]
+    assert row2["atc_code_list"] == ["C03BB03", "D04CC04"]  # Handled ,
 
     # Check Status
     assert row1["status_normalized"] == "APPROVED"
@@ -106,7 +106,7 @@ def test_enrich_epar_no_match() -> None:
         {
             "product_number": ["EMEA/H/C/001234"],
             "active_substance": ["A"],
-            "atc_code": ["A"],
+            "atc_code": ["A01BC01"],
             "authorisation_status": ["Authorised"],
             "marketing_authorisation_holder": ["Unique Name"],
         }
@@ -128,7 +128,7 @@ def test_enrich_tie_breaker_determinism() -> None:
             "medicine_name": ["M1"],
             "marketing_authorisation_holder": ["Pharma Corp"],
             "active_substance": ["S1"],
-            "atc_code": ["A1"],
+            "atc_code": ["A01BC01"],
             "authorisation_status": ["Authorised"],
             "url": ["u"],
         }
@@ -163,7 +163,7 @@ def test_enrich_epar_empty_spor() -> None:
         {
             "product_number": ["EMEA/H/C/001234"],
             "active_substance": ["A"],
-            "atc_code": ["A"],
+            "atc_code": ["A01BC01"],
             "authorisation_status": ["Authorised"],
             "marketing_authorisation_holder": ["Unique Name"],
         }
@@ -173,3 +173,39 @@ def test_enrich_epar_empty_spor() -> None:
 
     result = enrich_epar(df, spor_df)
     assert result["spor_mah_id"].item() is None
+
+
+def test_atc_code_validation() -> None:
+    # Test strict L7 validation (Regex: ^[A-Z]\d{2}[A-Z]{2}\d{2}$)
+    atc_codes = [
+        "A01BC01",  # Valid
+        "X01",  # Too short
+        "A01BC012",  # Too long
+        "101BC01",  # Starts with digit
+        "A011234",  # Missing middle letters
+        "A01BC01;X01",  # One valid, one invalid
+        None,  # Null
+    ]
+    length = len(atc_codes)
+
+    df = pl.DataFrame(
+        {
+            "product_number": ["P1"] * length,
+            "active_substance": ["S1"] * length,
+            "atc_code": atc_codes,
+            "authorisation_status": ["A"] * length,
+            "marketing_authorisation_holder": ["H"] * length,
+        }
+    )
+    spor_df = pl.DataFrame({"name": ["H"], "org_id": ["O1"]})
+
+    result = enrich_epar(df, spor_df)
+    atc_lists = result["atc_code_list"].to_list()
+
+    assert atc_lists[0] == ["A01BC01"]  # Valid kept
+    assert atc_lists[1] == []  # Too short dropped
+    assert atc_lists[2] == []  # Too long dropped
+    assert atc_lists[3] == []  # Wrong start dropped
+    assert atc_lists[4] == []  # Wrong format dropped
+    assert atc_lists[5] == ["A01BC01"]  # Mixed: keep valid, drop invalid
+    assert atc_lists[6] is None  # Null stays None (or empty list depending on impl, split returns null on null input)

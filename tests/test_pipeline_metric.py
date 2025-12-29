@@ -33,7 +33,7 @@ def test_pipeline_scd_metric_logging(tmp_path: Path, caplog: pytest.LogCaptureFi
             "marketing_authorisation_holder": ["H1"],
             "authorisation_status": ["A"],
             "active_substance": ["S1"],
-            "atc_code": ["A1"],
+            "atc_code": ["A01BC01"],
             "url": ["u"],
             "category": ["Human"],
         }
