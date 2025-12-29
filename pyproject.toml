@@ -63,6 +63,9 @@ ignore = []
 [tool.ruff.lint.isort]
 known-first-party = ["coreason_etl_epar"]
 
+[tool.poetry.scripts]
+coreason-epar = "coreason_etl_epar.main:main"
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
