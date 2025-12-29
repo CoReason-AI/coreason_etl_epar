@@ -1,5 +1,6 @@
 import xml.etree.ElementTree as ET
 import zipfile
+from datetime import datetime
 from typing import Any, Dict, Iterator, List
 
 import dlt
@@ -33,7 +34,17 @@ def epar_index(file_path: str) -> Iterator[Dict[str, Any]]:
         logger.error("Column 'category' not found in Excel file")
         return
 
-    filtered_df = df.filter(pl.col("category") == "Human")
+    total_rows = df.height
+    filtered_df = df.filter(pl.col("category").str.to_uppercase() == "HUMAN")
+    human_rows = filtered_df.height
+    veterinary_drop_count = total_rows - human_rows
+
+    logger.bind(veterinary_drop_count=veterinary_drop_count, metric="veterinary_drop_count").info(
+        f"Filtered {veterinary_drop_count} Veterinary/Other rows"
+    )
+
+    # Normalize 'category' to 'Human' to satisfy Pydantic Strict Literal
+    filtered_df = filtered_df.with_columns(pl.lit("Human").alias("category"))
 
     for row in filtered_df.iter_rows(named=True):
         try:
@@ -41,8 +52,16 @@ def epar_index(file_path: str) -> Iterator[Dict[str, Any]]:
             yield validated_row.model_dump()
 
         except ValidationError as e:
-            logger.warning(f"Validation failed for row {row.get('product_number', 'UNKNOWN')}: {e}")
-            pass
+            product_number = row.get("product_number", "UNKNOWN")
+            logger.warning(f"Validation failed for row {product_number}: {e}")
+
+            quarantine_record = {
+                "raw_data": row,
+                "error_message": str(e),
+                "product_number": product_number,
+                "ingestion_ts": datetime.now().isoformat(),
+            }
+            yield dlt.mark.with_table_name(quarantine_record, "_quarantine")
 
 
 @dlt.resource(name="spor_organisations", write_disposition="replace")  # type: ignore[misc]

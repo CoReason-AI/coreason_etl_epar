@@ -11,22 +11,44 @@ def dummy_excel_file(tmp_path: Path) -> str:
     file_path = tmp_path / "medicines.xlsx"
 
     # Create a DataFrame with some valid and invalid data
+    # Added mixed casing for Category to test case-insensitivity
     data = {
-        "Category": ["Human", "Veterinary", "Human", "Human"],
-        "Product number": ["EMEA/H/C/001234", "EMEA/V/C/009999", "INVALID_NUM", "EMEA/H/C/005678"],
-        "Medicine name": ["Med A", "Med Vet", "Med B", "Med C"],
-        "Marketing authorisation holder": ["Holder A", "Holder V", "Holder B", "Holder C"],
-        "Active substance": ["Sub A", "Sub V", "Sub B", "Sub C"],
-        "Therapeutic area": ["Area A", "Area V", "Area B", "Area C"],
-        "ATC code": ["A01", "V01", "B02", "C03"],
-        "Generic": [False, False, False, True],
-        "Biosimilar": [False, False, False, False],
-        "Orphan": [False, False, False, False],
-        "Conditional approval": [False, False, False, False],
-        "Exceptional circumstances": [False, False, False, False],
-        "Authorisation status": ["Authorised", "Authorised", "Authorised", "Refused"],
-        "Revision date": [None, None, None, None],
-        "URL": ["http://a.com", "http://v.com", "http://b.com", "http://c.com"],
+        "Category": ["Human", "Veterinary", "Human", "HUMAN", "human", "VETERINARY"],
+        "Product number": [
+            "EMEA/H/C/001234",
+            "EMEA/V/C/009999",
+            "INVALID_NUM",
+            "EMEA/H/C/005678",
+            "EMEA/H/C/000001",
+            "EMEA/V/C/008888",
+        ],
+        "Medicine name": ["Med A", "Med Vet", "Med B", "Med C", "Med D", "Med V2"],
+        "Marketing authorisation holder": ["Holder A", "Holder V", "Holder B", "Holder C", "Holder D", "Holder V2"],
+        "Active substance": ["Sub A", "Sub V", "Sub B", "Sub C", "Sub D", "Sub V2"],
+        "Therapeutic area": ["Area A", "Area V", "Area B", "Area C", "Area D", "Area V2"],
+        "ATC code": ["A01", "V01", "B02", "C03", "D04", "V02"],
+        "Generic": [False, False, False, True, False, False],
+        "Biosimilar": [False, False, False, False, False, False],
+        "Orphan": [False, False, False, False, False, False],
+        "Conditional approval": [False, False, False, False, False, False],
+        "Exceptional circumstances": [False, False, False, False, False, False],
+        "Authorisation status": [
+            "Authorised",
+            "Authorised",
+            "Authorised",
+            "Refused",
+            "Authorised",
+            "Authorised",
+        ],
+        "Revision date": [None, None, None, None, None, None],
+        "URL": [
+            "http://a.com",
+            "http://v.com",
+            "http://b.com",
+            "http://c.com",
+            "http://d.com",
+            "http://v2.com",
+        ],
     }
 
     # Create Excel file using pandas (requires openpyxl)
@@ -42,20 +64,40 @@ def test_epar_index_resource(dummy_excel_file: str) -> None:
     rows = list(resource)
 
     # Analysis of expected output:
-    # Row 0: Human, Valid -> Should be yielded
-    # Row 1: Veterinary -> Should be filtered out
-    # Row 2: Human, Invalid Product Number -> Validation error, log warning, skip (based on current impl)
-    # Row 3: Human, Valid Refused -> Should be yielded
+    # Row 0: Human, Valid -> Yielded
+    # Row 1: Veterinary -> Filtered
+    # Row 2: Human, Invalid Product Number -> Quarantine
+    # Row 3: HUMAN, Valid Refused -> Yielded
+    # Row 4: human, Valid -> Yielded
+    # Row 5: VETERINARY -> Filtered
 
-    assert len(rows) == 2
+    # Total yielded: 3 valid + 1 quarantine = 4
+    # Valid: Row 0, Row 3, Row 4.
+    # Quarantine: Row 2.
 
-    row1 = rows[0]
-    assert row1["product_number"] == "EMEA/H/C/001234"
-    assert row1["category"] == "Human"
+    # Because we now yield quarantine items, the length should be 4
+    assert len(rows) == 4
 
-    row2 = rows[1]
-    assert row2["product_number"] == "EMEA/H/C/005678"
-    assert row2["medicine_name"] == "Med C"
+    valid_rows = [r for r in rows if "error_message" not in r]
+    quarantine_rows = [r for r in rows if "error_message" in r]
+
+    assert len(valid_rows) == 3
+    assert len(quarantine_rows) == 1
+
+    # Check case insensitivity
+    product_numbers = [r["product_number"] for r in valid_rows]
+    assert "EMEA/H/C/001234" in product_numbers  # Human
+    assert "EMEA/H/C/005678" in product_numbers  # HUMAN
+    assert "EMEA/H/C/000001" in product_numbers  # human
+
+    # Ensure veterinary ones are not there
+    assert "EMEA/V/C/009999" not in product_numbers
+    assert "EMEA/V/C/008888" not in product_numbers
+
+    q_row = quarantine_rows[0]
+    assert q_row["product_number"] == "INVALID_NUM"
+    assert "Invalid EMA Product Number format" in q_row["error_message"]
+    assert "ingestion_ts" in q_row
 
 
 def test_ingest_file_not_found() -> None:

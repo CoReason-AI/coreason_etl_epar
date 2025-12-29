@@ -1,6 +1,7 @@
 from typing import Dict
 
 import polars as pl
+from loguru import logger
 
 
 def normalize_status(status: str) -> str:
@@ -172,5 +173,17 @@ def enrich_epar(df: pl.DataFrame, spor_df: pl.DataFrame) -> pl.DataFrame:
 
     # Join back to main DF
     df = df.join(matches, on="marketing_authorisation_holder", how="left").rename({"spor_id": "spor_mah_id"})
+
+    # 6. Calculate & Log Match Rate Metric
+    total_mah = mah_names.height
+    matched_mah = matches.height
+    match_rate = (matched_mah / total_mah) if total_mah > 0 else 0.0
+
+    logger.bind(spor_match_rate=match_rate, metric="spor_match_rate").info(
+        f"SPOR Match Rate: {match_rate:.2%} ({matched_mah}/{total_mah})"
+    )
+
+    if match_rate < 0.90 and total_mah > 0:
+        logger.warning(f"SPOR Match Rate is below threshold: {match_rate:.2%}")
 
     return df
