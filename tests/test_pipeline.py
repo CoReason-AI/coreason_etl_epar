@@ -336,3 +336,17 @@ def test_pipeline_incremental_load(tmp_path: Path) -> None:
         mock_gold.return_value = {}
 
         p.run_transformations(epar_df, spor_df, history_path=str(history_path))
+
+
+def test_load_bronze_connection_error(tmp_path: Path) -> None:
+    # Test that connection failure in the initial check is handled
+    p = EPARPipeline("dummy", "dummy", work_dir=str(tmp_path))
+
+    with patch("coreason_etl_epar.pipeline.dlt.pipeline") as mock_dlt_class:
+        mock_instance = mock_dlt_class.return_value
+        # Raise exception when entering context
+        mock_instance.sql_client.return_value.__enter__.side_effect = Exception("Connection Failed")
+
+        data = p.load_bronze()
+        assert data["epar"].is_empty()
+        assert data["spor"].is_empty()

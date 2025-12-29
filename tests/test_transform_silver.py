@@ -215,3 +215,19 @@ def test_scd2_flapping() -> None:
     row_a_new = result.filter(pl.col("valid_from") == ts3)
     assert row_a_new["is_current"].item() is True
     assert row_a_new["data"].item() == "A"
+
+
+def test_scd2_duplicate_source_keys(empty_history: pl.DataFrame) -> None:
+    # Snapshot contains DUPLICATE keys (e.g., source file error).
+    # Logic should be robust: ideally deduplicate or handle gracefully without exploding history.
+    # Current expectation: Deduplicate by picking one (first/arbitrary) or ensuring output keys are unique.
+
+    ts = datetime(2024, 1, 1)
+    snapshot = pl.DataFrame({"id": [1, 1], "data": ["A", "A"]})  # Identical duplicates
+
+    result = apply_scd2(snapshot, empty_history, "id", ts, ["data"])
+
+    # If not deduplicated, might have 2 rows. We want 1.
+    active_rows = result.filter(pl.col("is_current"))
+    assert active_rows.height == 1
+    assert active_rows["id"].item() == 1

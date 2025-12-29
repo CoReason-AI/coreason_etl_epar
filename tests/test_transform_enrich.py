@@ -209,3 +209,35 @@ def test_atc_code_validation() -> None:
     assert atc_lists[4] == []  # Wrong format dropped
     assert atc_lists[5] == ["A01BC01"]  # Mixed: keep valid, drop invalid
     assert atc_lists[6] is None  # Null stays None (or empty list depending on impl, split returns null on null input)
+
+
+def test_jaro_winkler_unicode() -> None:
+    # Test normalization and unicode chars
+    # "café" vs "cafe"
+    # é is U+00E9. e is U+0065.
+    s1 = "café"
+    s2 = "cafe"
+    score = jaro_winkler(s1, s2)
+    # They share c,a,f. 4th char differs.
+    # Score should be high but not 1.0.
+    assert 0.8 < score < 1.0
+
+    # NFD normalization check?
+    # s1 = 'e\u0301' (e + acute accent)
+    # s2 = '\u00e9' (é)
+    # Pure python string equality checks glyphs if normalized?
+    # Python str handles unicode naturally but == depends on normalization.
+    # We don't implement explicit normalization in our function, so they might mismatch.
+    # This is an edge case: we verify our function behaves safely (no crash) and returns expected non-1.0 if raw codepoints differ.
+    s_nfd = "cafe\u0301"
+    s_nfc = "caf\u00e9"
+    # On most systems these are different strings.
+    assert s_nfd != s_nfc
+    score_norm = jaro_winkler(s_nfd, s_nfc)
+    # c,a,f,e match. \u0301 (accent) is left over in s_nfd.
+    # s_nfc has \u00e9 which doesn't match e or accent?
+    # Actually s_nfc[3] is \u00e9. s_nfd[3] is e.
+    # So they match on c,a,f,e.
+    # s_nfd has length 5. s_nfc has length 4.
+    # High score expected.
+    assert score_norm > 0.8
