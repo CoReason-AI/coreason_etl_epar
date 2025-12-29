@@ -1,8 +1,9 @@
 from datetime import datetime
 
 import pytest
-from coreason_etl_epar.schema import EPARSourceRow
 from pydantic import ValidationError
+
+from coreason_etl_epar.schema import EPARSourceRow
 
 
 def test_valid_epar_source_row() -> None:

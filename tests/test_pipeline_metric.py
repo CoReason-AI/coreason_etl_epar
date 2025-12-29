@@ -6,8 +6,9 @@ from unittest.mock import patch
 
 import polars as pl
 import pytest
-from coreason_etl_epar.pipeline import EPARPipeline
 from loguru import logger
+
+from coreason_etl_epar.pipeline import EPARPipeline
 
 
 @pytest.fixture  # type: ignore[misc]

@@ -1,6 +1,7 @@
 from datetime import datetime
 
 import polars as pl
+
 from coreason_etl_epar.transform_gold import create_gold_layer, generate_coreason_id
 
 
