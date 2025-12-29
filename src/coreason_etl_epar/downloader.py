@@ -1,9 +1,9 @@
 from pathlib import Path
 from typing import Optional
 
-import requests  # type: ignore[import-untyped]
+import requests
 from loguru import logger
-from requests.adapters import HTTPAdapter  # type: ignore[import-untyped]
+from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 # Endpoints defined in FRD
