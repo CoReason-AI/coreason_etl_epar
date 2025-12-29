@@ -3,13 +3,15 @@ from typing import Any, Dict
 
 import polars as pl
 
-from coreason_etl_epar.transform_silver import apply_scd2
 from coreason_etl_epar.transform_enrich import enrich_epar
+from coreason_etl_epar.transform_silver import apply_scd2
+
 
 def test_scd2_conflicting_duplicates() -> None:
     """
     Edge Case: Source snapshot contains duplicate primary keys with conflicting data.
-    The pipeline must be deterministic (pick first) and not fail or create duplicate history entries for the same active period.
+    The pipeline must be deterministic (pick first) and not fail or create duplicate
+    history entries for the same active period.
     """
     ts = datetime(2024, 1, 1)
 
@@ -28,10 +30,7 @@ def test_scd2_conflicting_duplicates() -> None:
     # Snapshot with duplicates
     # Row 1: ID=1, Data="Winner"
     # Row 2: ID=1, Data="Loser"
-    snapshot = pl.DataFrame({
-        "id": [1, 1],
-        "data": ["Winner", "Loser"]
-    })
+    snapshot = pl.DataFrame({"id": [1, 1], "data": ["Winner", "Loser"]})
 
     result = apply_scd2(snapshot, empty_history, "id", ts, ["data"])
 
@@ -51,14 +50,16 @@ def test_enrich_chaos_strings() -> None:
     # messy_substance: " A  /  B +  + / C " -> Should become ["A", "B", "C"]
     # messy_atc: "A01,, B02 ; ; C03" -> Should become ["A01", "B02", "C03"] (normalized)
 
-    df = pl.DataFrame({
-        "product_number": ["P1"],
-        "medicine_name": ["M"],
-        "active_substance": [" A  /  B +  + / C "],
-        "atc_code": ["A01,, B02 ; ; C03"],
-        "marketing_authorisation_holder": ["MAH"],
-        "authorisation_status": ["A"]
-    })
+    df = pl.DataFrame(
+        {
+            "product_number": ["P1"],
+            "medicine_name": ["M"],
+            "active_substance": [" A  /  B +  + / C "],
+            "atc_code": ["A01,, B02 ; ; C03"],
+            "marketing_authorisation_holder": ["MAH"],
+            "authorisation_status": ["A"],
+        }
+    )
 
     spor_df = pl.DataFrame(schema={"name": pl.String, "org_id": pl.String})
 

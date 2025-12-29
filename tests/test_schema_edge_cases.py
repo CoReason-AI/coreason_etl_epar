@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Any, Dict
 
 import pytest
@@ -21,8 +20,8 @@ def test_schema_empty_string_conversion() -> None:
         "authorisation_status": "A",
         "url": "u",
         "therapeutic_area": "",  # Empty String
-        "atc_code": "",         # Empty String
-        "revision_date": None
+        "atc_code": "",  # Empty String
+        "revision_date": None,
     }
 
     # Depending on Pydantic config, this might fail or pass as "".
@@ -52,7 +51,7 @@ def test_schema_date_empty_string() -> None:
         "active_substance": "S",
         "authorisation_status": "A",
         "url": "u",
-        "revision_date": ""  # Empty String for Datetime
+        "revision_date": "",  # Empty String for Datetime
     }
 
     # Expectation: Validation Error
@@ -76,7 +75,7 @@ def test_schema_boolean_coercion() -> None:
         "authorisation_status": "A",
         "url": "u",
         "orphan": "Yes",  # String "Yes"
-        "generic": "no"   # String "no"
+        "generic": "no",  # String "no"
     }
 
     # Pydantic V2 allows string coercion for bools by default (strict=False).
