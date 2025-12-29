@@ -14,7 +14,7 @@ import pytest
 from coreason_etl_epar.transform_enrich import enrich_epar
 
 
-@pytest.fixture  # type: ignore[misc]
+@pytest.fixture
 def base_epar_df() -> pl.DataFrame:
     return pl.DataFrame(
         {
