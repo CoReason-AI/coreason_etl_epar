@@ -10,7 +10,7 @@ from coreason_etl_epar.pipeline import EPARPipeline
 from loguru import logger
 
 
-@pytest.fixture
+@pytest.fixture  # type: ignore[misc]
 def caplog(caplog: pytest.LogCaptureFixture) -> Generator[pytest.LogCaptureFixture, None, None]:
     class PropagateHandler(logging.Handler):
         def emit(self, record: logging.LogRecord) -> None:
