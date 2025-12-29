@@ -228,7 +228,8 @@ def test_jaro_winkler_unicode() -> None:
     # Pure python string equality checks glyphs if normalized?
     # Python str handles unicode naturally but == depends on normalization.
     # We don't implement explicit normalization in our function, so they might mismatch.
-    # This is an edge case: we verify our function behaves safely (no crash) and returns expected non-1.0 if raw codepoints differ.
+    # This is an edge case: we verify our function behaves safely (no crash) and returns expected non-1.0
+    # if raw codepoints differ.
     s_nfd = "cafe\u0301"
     s_nfc = "caf\u00e9"
     # On most systems these are different strings.
