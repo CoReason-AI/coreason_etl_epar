@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any, Dict
 
 import polars as pl
 
@@ -133,7 +134,7 @@ def test_gold_empty_lists() -> None:
     # Gold bridge table should not fail, just have fewer rows.
 
     # Define schema explicitly to avoid Null type inference
-    schema = {
+    schema: Dict[str, pl.DataType | Any] = {
         "product_number": pl.String,
         "medicine_name": pl.String,
         "base_procedure_id": pl.String,
@@ -152,7 +153,7 @@ def test_gold_empty_lists() -> None:
     }
 
     silver_df = pl.DataFrame(
-        {
+        data={
             "product_number": ["P1"],
             "medicine_name": ["M1"],
             "base_procedure_id": ["1"],

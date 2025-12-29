@@ -4,7 +4,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, field_validator
 
 
-class EPARSourceRow(BaseModel):  # type: ignore
+class EPARSourceRow(BaseModel):
     category: Literal["Human"]  # Strict Filter
     product_number: str  # Primary Key (e.g., EMEA/H/C/001234)
     medicine_name: str
@@ -26,7 +26,7 @@ class EPARSourceRow(BaseModel):  # type: ignore
     revision_date: Optional[datetime] = None
     url: str
 
-    @field_validator("product_number")  # type: ignore
+    @field_validator("product_number")
     @classmethod
     def validate_ema_format(cls, v: str) -> str:
         if not v.startswith("EMEA/"):

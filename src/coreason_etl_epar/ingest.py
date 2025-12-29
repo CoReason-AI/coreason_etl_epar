@@ -11,8 +11,8 @@ from pydantic import ValidationError
 from coreason_etl_epar.schema import EPARSourceRow
 
 
-@dlt.resource(name="epar_index", write_disposition="replace")  # type: ignore[misc]
-def epar_index(file_path: str) -> Iterator[Dict[str, Any]]:
+@dlt.resource(name="epar_index", write_disposition="replace")
+def epar_index(file_path: str) -> Iterator[Dict[str, Any] | Any]:
     """
     DLT Resource to ingest EPAR Index from Excel.
     Filters for Category == 'Human' and excludes 'Veterinary'.
@@ -68,7 +68,7 @@ def epar_index(file_path: str) -> Iterator[Dict[str, Any]]:
             yield dlt.mark.with_table_name(quarantine_record, "_quarantine")
 
 
-@dlt.resource(name="spor_organisations", write_disposition="replace")  # type: ignore[misc]
+@dlt.resource(name="spor_organisations", write_disposition="replace")
 def spor_organisations(file_path: str) -> Iterator[Dict[str, Any]]:
     """
     DLT Resource to ingest SPOR Organisations from a Zip containing XML.

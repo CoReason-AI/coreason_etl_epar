@@ -9,7 +9,7 @@ import pytest
 from coreason_etl_epar.pipeline import EPARPipeline
 
 
-@pytest.fixture  # type: ignore[misc]
+@pytest.fixture
 def mock_dlt_pipeline() -> Any:
     with patch("coreason_etl_epar.pipeline.dlt.pipeline") as mock:
         yield mock

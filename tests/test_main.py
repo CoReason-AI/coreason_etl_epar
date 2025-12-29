@@ -17,13 +17,13 @@ import pytest
 from coreason_etl_epar.main import main
 
 
-@pytest.fixture  # type: ignore[misc]
+@pytest.fixture
 def mock_fetch_sources() -> Iterator[MagicMock]:
     with patch("coreason_etl_epar.main.fetch_sources") as mock:
         yield mock
 
 
-@pytest.fixture  # type: ignore[misc]
+@pytest.fixture
 def mock_pipeline() -> Iterator[MagicMock]:
     with patch("coreason_etl_epar.main.EPARPipeline") as mock:
         yield mock

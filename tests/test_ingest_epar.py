@@ -6,7 +6,7 @@ import pytest
 from coreason_etl_epar.ingest import epar_index
 
 
-@pytest.fixture  # type: ignore[misc]
+@pytest.fixture
 def dummy_excel_file(tmp_path: Path) -> str:
     file_path = tmp_path / "medicines.xlsx"
 

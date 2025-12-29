@@ -9,6 +9,7 @@
 # Source Code: https://github.com/CoReason-AI/coreason_etl_epar
 
 from datetime import datetime
+from typing import Any, Dict
 
 import polars as pl
 
@@ -86,7 +87,7 @@ def test_gold_empty_schema() -> None:
     Gold output must still have the correct schema (columns), not just be empty structureless DFs.
     """
     # Empty Silver DF with correct schema
-    silver_schema = {
+    silver_schema: Dict[str, pl.DataType | Any] = {
         "product_number": pl.String,
         "medicine_name": pl.String,
         "marketing_authorisation_holder": pl.String,

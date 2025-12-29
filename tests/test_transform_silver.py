@@ -6,7 +6,7 @@ import pytest
 from coreason_etl_epar.transform_silver import apply_scd2
 
 
-@pytest.fixture  # type: ignore[misc]
+@pytest.fixture
 def empty_history() -> pl.DataFrame:
     # Schema needs to match what we expect + overhead columns
     schema = {
