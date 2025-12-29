@@ -12,8 +12,10 @@ def dummy_excel_file(tmp_path: Path) -> str:
 
     # Create a DataFrame with some valid and invalid data
     # Added mixed casing for Category to test case-insensitivity
+    # Added whitespace test (" Human ")
+    # Added missing Product Number case
     data = {
-        "Category": ["Human", "Veterinary", "Human", "HUMAN", "human", "VETERINARY"],
+        "Category": ["Human", "Veterinary", "Human", "HUMAN", "human", "VETERINARY", " Human ", "Human"],
         "Product number": [
             "EMEA/H/C/001234",
             "EMEA/V/C/009999",
@@ -21,17 +23,28 @@ def dummy_excel_file(tmp_path: Path) -> str:
             "EMEA/H/C/005678",
             "EMEA/H/C/000001",
             "EMEA/V/C/008888",
+            "EMEA/H/C/009000",
+            None,  # Missing Product Number
         ],
-        "Medicine name": ["Med A", "Med Vet", "Med B", "Med C", "Med D", "Med V2"],
-        "Marketing authorisation holder": ["Holder A", "Holder V", "Holder B", "Holder C", "Holder D", "Holder V2"],
-        "Active substance": ["Sub A", "Sub V", "Sub B", "Sub C", "Sub D", "Sub V2"],
-        "Therapeutic area": ["Area A", "Area V", "Area B", "Area C", "Area D", "Area V2"],
-        "ATC code": ["A01", "V01", "B02", "C03", "D04", "V02"],
-        "Generic": [False, False, False, True, False, False],
-        "Biosimilar": [False, False, False, False, False, False],
-        "Orphan": [False, False, False, False, False, False],
-        "Conditional approval": [False, False, False, False, False, False],
-        "Exceptional circumstances": [False, False, False, False, False, False],
+        "Medicine name": ["Med A", "Med Vet", "Med B", "Med C", "Med D", "Med V2", "Med Pad", "Med NoID"],
+        "Marketing authorisation holder": [
+            "Holder A",
+            "Holder V",
+            "Holder B",
+            "Holder C",
+            "Holder D",
+            "Holder V2",
+            "Holder P",
+            "Holder N",
+        ],
+        "Active substance": ["Sub A", "Sub V", "Sub B", "Sub C", "Sub D", "Sub V2", "Sub P", "Sub N"],
+        "Therapeutic area": ["Area A", "Area V", "Area B", "Area C", "Area D", "Area V2", "Area P", "Area N"],
+        "ATC code": ["A01", "V01", "B02", "C03", "D04", "V02", "P05", "N06"],
+        "Generic": [False, False, False, True, False, False, False, False],
+        "Biosimilar": [False, False, False, False, False, False, False, False],
+        "Orphan": [False, False, False, False, False, False, False, False],
+        "Conditional approval": [False, False, False, False, False, False, False, False],
+        "Exceptional circumstances": [False, False, False, False, False, False, False, False],
         "Authorisation status": [
             "Authorised",
             "Authorised",
@@ -39,8 +52,10 @@ def dummy_excel_file(tmp_path: Path) -> str:
             "Refused",
             "Authorised",
             "Authorised",
+            "Authorised",
+            "Authorised",
         ],
-        "Revision date": [None, None, None, None, None, None],
+        "Revision date": [None, None, None, None, None, None, None, None],
         "URL": [
             "http://a.com",
             "http://v.com",
@@ -48,6 +63,8 @@ def dummy_excel_file(tmp_path: Path) -> str:
             "http://c.com",
             "http://d.com",
             "http://v2.com",
+            "http://p.com",
+            "http://n.com",
         ],
     }
 
@@ -70,34 +87,46 @@ def test_epar_index_resource(dummy_excel_file: str) -> None:
     # Row 3: HUMAN, Valid Refused -> Yielded
     # Row 4: human, Valid -> Yielded
     # Row 5: VETERINARY -> Filtered
+    # Row 6: " Human ", Valid (after strip) -> Yielded
+    # Row 7: Human, Missing Product Number -> Quarantine
 
-    # Total yielded: 3 valid + 1 quarantine = 4
-    # Valid: Row 0, Row 3, Row 4.
-    # Quarantine: Row 2.
+    # Total yielded: 4 valid + 2 quarantine = 6
+    # Valid: Row 0, Row 3, Row 4, Row 6.
+    # Quarantine: Row 2, Row 7.
 
-    # Because we now yield quarantine items, the length should be 4
-    assert len(rows) == 4
+    # Because we now yield quarantine items, the length should be 6
+    assert len(rows) == 6
 
     valid_rows = [r for r in rows if "error_message" not in r]
     quarantine_rows = [r for r in rows if "error_message" in r]
 
-    assert len(valid_rows) == 3
-    assert len(quarantine_rows) == 1
+    assert len(valid_rows) == 4
+    assert len(quarantine_rows) == 2
 
-    # Check case insensitivity
+    # Check case insensitivity & stripping
     product_numbers = [r["product_number"] for r in valid_rows]
     assert "EMEA/H/C/001234" in product_numbers  # Human
     assert "EMEA/H/C/005678" in product_numbers  # HUMAN
     assert "EMEA/H/C/000001" in product_numbers  # human
+    assert "EMEA/H/C/009000" in product_numbers  # " Human "
 
     # Ensure veterinary ones are not there
     assert "EMEA/V/C/009999" not in product_numbers
     assert "EMEA/V/C/008888" not in product_numbers
 
-    q_row = quarantine_rows[0]
-    assert q_row["product_number"] == "INVALID_NUM"
-    assert "Invalid EMA Product Number format" in q_row["error_message"]
-    assert "ingestion_ts" in q_row
+    # Check Quarantine Records
+    # 1. Invalid Number
+    q_invalid = next(r for r in quarantine_rows if r["product_number"] == "INVALID_NUM")
+    assert "Invalid EMA Product Number format" in q_invalid["error_message"]
+    assert "ingestion_ts" in q_invalid
+    assert q_invalid["raw_data"]["product_number"] == "INVALID_NUM"
+
+    # 2. Missing Number
+    # Note: When product_number is None/NaN, our ingest code defaults it to "UNKNOWN" in the log/quarantine struct key
+    # but the raw_data should contain the original None (or Nan/Null from polars).
+    q_missing = next(r for r in quarantine_rows if r["product_number"] == "UNKNOWN")
+    assert "product_number" in q_missing["error_message"]  # Pydantic error for missing field
+    assert q_missing["raw_data"]["medicine_name"] == "Med NoID"
 
 
 def test_ingest_file_not_found() -> None:

@@ -35,7 +35,7 @@ def epar_index(file_path: str) -> Iterator[Dict[str, Any]]:
         return
 
     total_rows = df.height
-    filtered_df = df.filter(pl.col("category").str.to_uppercase() == "HUMAN")
+    filtered_df = df.filter(pl.col("category").str.strip_chars().str.to_uppercase() == "HUMAN")
     human_rows = filtered_df.height
     veterinary_drop_count = total_rows - human_rows
 
@@ -52,7 +52,11 @@ def epar_index(file_path: str) -> Iterator[Dict[str, Any]]:
             yield validated_row.model_dump()
 
         except ValidationError as e:
-            product_number = row.get("product_number", "UNKNOWN")
+            # Handle None or Missing product_number
+            product_number = row.get("product_number")
+            if not product_number:
+                product_number = "UNKNOWN"
+
             logger.warning(f"Validation failed for row {product_number}: {e}")
 
             quarantine_record = {
