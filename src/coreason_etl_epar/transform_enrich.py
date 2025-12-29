@@ -123,7 +123,8 @@ def enrich_epar(df: pl.DataFrame, spor_df: pl.DataFrame) -> pl.DataFrame:
         .cast(pl.String)
         .str.replace_all(r",", ";")
         .str.split(";")
-        .list.eval(pl.element().str.strip_chars().filter(pl.element().str.contains(r"^[A-Z]\d{2}[A-Z]{2}\d{2}$")))
+        .list.eval(pl.element().str.strip_chars())
+        .list.eval(pl.element().filter(pl.element().str.contains(r"^[A-Z]\d{2}[A-Z]{2}\d{2}$")))
         .alias("atc_code_list")
     )
 
