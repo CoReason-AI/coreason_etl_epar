@@ -3,8 +3,8 @@ from typing import Any, Iterator
 from unittest.mock import MagicMock, patch
 
 import pytest
-import requests
-from requests.adapters import HTTPAdapter
+import requests  # type: ignore[import-untyped]
+from requests.adapters import HTTPAdapter  # type: ignore[import-untyped]
 
 from coreason_etl_epar.downloader import download_file, fetch_sources
 
