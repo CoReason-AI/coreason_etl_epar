@@ -40,7 +40,10 @@ def apply_scd2(
     """
 
     # 1. Prepare Snapshot
-    snapshot_hashed = generate_row_hash(current_snapshot, hash_columns)
+    # Deduplicate snapshot on primary key to prevent history corruption
+    # We keep the first occurrence arbitrarily if duplicates exist
+    snapshot_unique = current_snapshot.unique(subset=[primary_key], keep="first")
+    snapshot_hashed = generate_row_hash(snapshot_unique, hash_columns)
 
     # 2. Identify Changes
     if history.is_empty():
