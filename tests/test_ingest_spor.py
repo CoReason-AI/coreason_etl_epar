@@ -3,9 +3,8 @@ import zipfile
 from pathlib import Path
 
 import pytest
-from dlt.extract.exceptions import ResourceExtractionError
-
 from coreason_etl_epar.ingest import spor_organisations
+from dlt.extract.exceptions import ResourceExtractionError
 
 
 @pytest.fixture  # type: ignore[misc]

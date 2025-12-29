@@ -124,6 +124,12 @@ class EPARPipeline:
             hash_columns=hash_cols,
         )
 
+        # Calculate Metric: SCD Updates Count (New or Changed rows today)
+        updates_count = silver_scd.filter(pl.col("valid_from") == ingestion_ts).height
+        logger.bind(scd_updates_count=updates_count, metric="scd_updates_count").info(
+            f"SCD Updates Count: {updates_count}"
+        )
+
         # 2. Enrichment
         silver_enriched = enrich_epar(silver_scd, bronze_spor)
 

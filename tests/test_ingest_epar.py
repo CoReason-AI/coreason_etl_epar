@@ -2,7 +2,6 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-
 from coreason_etl_epar.ingest import epar_index
 
 

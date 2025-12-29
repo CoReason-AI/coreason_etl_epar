@@ -5,7 +5,6 @@ from unittest.mock import MagicMock, patch
 
 import polars as pl
 import pytest
-
 from coreason_etl_epar.pipeline import EPARPipeline
 
 
@@ -289,7 +288,8 @@ def test_run_transformations_defaults(tmp_path: Path) -> None:
         patch("coreason_etl_epar.pipeline.enrich_epar") as mock_enrich,
         patch("coreason_etl_epar.pipeline.create_gold_layer") as mock_gold,
     ):
-        mock_scd2.return_value = pl.DataFrame()
+        # Mock must include valid_from for metric calculation
+        mock_scd2.return_value = pl.DataFrame(schema={"valid_from": pl.Datetime})
         mock_enrich.return_value = pl.DataFrame()
         mock_gold.return_value = {}
 
@@ -329,7 +329,8 @@ def test_pipeline_incremental_load(tmp_path: Path) -> None:
         patch("coreason_etl_epar.pipeline.enrich_epar") as mock_enrich,
         patch("coreason_etl_epar.pipeline.create_gold_layer") as mock_gold,
     ):
-        mock_scd2.return_value = pl.DataFrame()
+        # Mock must include valid_from for metric calculation
+        mock_scd2.return_value = pl.DataFrame(schema={"valid_from": pl.Datetime})
         mock_enrich.return_value = pl.DataFrame()
         mock_gold.return_value = {}
 

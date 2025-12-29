@@ -2,7 +2,6 @@ from datetime import datetime
 
 import polars as pl
 import pytest
-
 from coreason_etl_epar.transform_silver import apply_scd2
 
 
