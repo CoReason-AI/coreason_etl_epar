@@ -90,7 +90,7 @@ def jaro_winkler(s1: str, s2: str) -> float:
 
 def enrich_epar(df: pl.DataFrame, spor_df: pl.DataFrame) -> pl.DataFrame:
     """
-    Applies cleaning and enrichment to EPAR dataframe.
+    Applies cleaning and enrichment to EPAR dataframe using Lazy API and Streaming.
 
     Args:
         df: Silver EPAR dataframe.
@@ -99,37 +99,43 @@ def enrich_epar(df: pl.DataFrame, spor_df: pl.DataFrame) -> pl.DataFrame:
     Returns:
         Enriched DataFrame with cleaned fields and spor_mah_id.
     """
+    # Convert to LazyFrame
+    lf = df.lazy()
+    spor_lf = spor_df.lazy()
 
     # 1. Base Procedure ID
     # Regex extract EMEA/H/C/(\d+)
-    df = df.with_columns(pl.col("product_number").str.extract(r"EMEA/H/C/(\d+)", 1).alias("base_procedure_id"))
+    lf = lf.with_columns(pl.col("product_number").str.extract(r"EMEA/H/C/(\d+)", 1).alias("base_procedure_id"))
 
     # 2. Substance Normalization (Split to List)
     # Refined Substance: Replace + with / first then split
-    df = df.with_columns(
+    lf = lf.with_columns(
         pl.col("active_substance")
         .cast(pl.String)
         .str.replace_all(r"\+", "/")
         .str.split("/")
         .list.eval(pl.element().str.strip_chars())
+        .list.eval(pl.element().filter(pl.element().str.len_chars() > 0))  # Filter empty strings
         .alias("active_substance_list")
     )
 
     # 3. ATC Code Explosion
     # Validate format (L7 standard): Letter, 2 Digits, 2 Letters, 2 Digits (e.g. A01BC01)
     # Regex: ^[A-Z]\d{2}[A-Z]{2}\d{2}$
-    df = df.with_columns(
+    lf = lf.with_columns(
         pl.col("atc_code")
         .cast(pl.String)
+        .str.to_uppercase()  # Normalize to uppercase before validation
         .str.replace_all(r",", ";")
         .str.split(";")
         .list.eval(pl.element().str.strip_chars())
+        .list.eval(pl.element().filter(pl.element().str.len_chars() > 0))  # Filter empty strings
         .list.eval(pl.element().filter(pl.element().str.contains(r"^[A-Z]\d{2}[A-Z]{2}\d{2}$")))
         .alias("atc_code_list")
     )
 
     # 4. Status Standardization
-    df = df.with_columns(
+    lf = lf.with_columns(
         pl.col("authorisation_status").map_elements(normalize_status, return_dtype=pl.String).alias("status_normalized")
     )
 
@@ -137,49 +143,50 @@ def enrich_epar(df: pl.DataFrame, spor_df: pl.DataFrame) -> pl.DataFrame:
     # We need to map 'marketing_authorisation_holder' to 'spor_org_id'.
     # Strategy:
     # Get unique MAHs from EPAR
-    mah_names = df.select("marketing_authorisation_holder").unique()
+    mah_names_lf = lf.select("marketing_authorisation_holder").unique()
 
     # If SPOR is empty, return with null id
+    # We need to check if spor_df is empty. Since we have the DF, we can check directly.
     if spor_df.is_empty():
-        return df.with_columns(pl.lit(None, dtype=pl.String).alias("spor_mah_id"))
-
-    # Cross join unique MAHs with SPOR Names
-    # Note: Optimization - only join if we have data.
+        return lf.with_columns(pl.lit(None, dtype=pl.String).alias("spor_mah_id")).collect(engine="streaming")
 
     # Rename for clarity
     # SPOR DF expected cols: name, org_id
-    spor_renamed = spor_df.select([pl.col("name").alias("spor_name"), pl.col("org_id").alias("spor_id")])
+    spor_renamed_lf = spor_lf.select([pl.col("name").alias("spor_name"), pl.col("org_id").alias("spor_id")])
 
     # Cartesian Product
-    cross = mah_names.join(spor_renamed, how="cross")
+    cross_lf = mah_names_lf.join(spor_renamed_lf, how="cross")
 
     # Compute Distance
     # Use map_elements with jaro_winkler
-    # This is expensive, so we do it on unique names (small set)
-
     def calc_dist(struct: Dict[str, str]) -> float:
         return jaro_winkler(struct["marketing_authorisation_holder"].lower(), struct["spor_name"].lower())
 
-    cross = cross.with_columns(
+    cross_lf = cross_lf.with_columns(
         pl.struct(["marketing_authorisation_holder", "spor_name"])
         .map_elements(calc_dist, return_dtype=pl.Float64)
         .alias("score")
     )
 
     # Filter > 0.90 and pick best match
-    matches = (
-        cross.filter(pl.col("score") > 0.90)
+    matches_lf = (
+        cross_lf.filter(pl.col("score") > 0.90)
         .sort(["score", "spor_id"], descending=[True, False])
         .unique(subset=["marketing_authorisation_holder"], keep="first")
         .select(["marketing_authorisation_holder", "spor_id"])
     )
 
-    # Join back to main DF
-    df = df.join(matches, on="marketing_authorisation_holder", how="left").rename({"spor_id": "spor_mah_id"})
+    # To calculate metrics, we must materialize the matches (or at least the count)
+    # We collect the matches DF. It should be small (distinct MAHs).
+    # Collecting here allows us to log the metric and then use the DF for joining.
+    matches_df = (
+        matches_lf.collect()
+    )  # Not streaming here as it involves cross-join which might be tricky, but let's try strict default
 
-    # 6. Calculate & Log Match Rate Metric
-    total_mah = mah_names.height
-    matched_mah = matches.height
+    # Calculate & Log Match Rate Metric
+    # We need total unique MAHs count.
+    total_mah = mah_names_lf.collect().height
+    matched_mah = matches_df.height
     match_rate = (matched_mah / total_mah) if total_mah > 0 else 0.0
 
     logger.bind(spor_match_rate=match_rate, metric="spor_match_rate").info(
@@ -189,4 +196,13 @@ def enrich_epar(df: pl.DataFrame, spor_df: pl.DataFrame) -> pl.DataFrame:
     if match_rate < 0.90 and total_mah > 0:
         logger.warning(f"SPOR Match Rate is below threshold: {match_rate:.2%}")
 
-    return df
+    # Join back to main DF
+    # We use the materialized matches_df but convert to lazy for the join
+    lf = lf.join(matches_df.lazy(), on="marketing_authorisation_holder", how="left").rename({"spor_id": "spor_mah_id"})
+
+    # Return collected result with streaming
+    # Note: Sort by product_number to ensure deterministic order (streaming might shuffle)
+    if "product_number" in df.columns:
+        lf = lf.sort("product_number")
+
+    return lf.collect(engine="streaming")

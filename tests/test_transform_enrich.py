@@ -188,9 +188,12 @@ def test_atc_code_validation() -> None:
     ]
     length = len(atc_codes)
 
+    # Use unique product numbers to ensure stable sorting
+    product_numbers = [f"P{i}" for i in range(length)]
+
     df = pl.DataFrame(
         {
-            "product_number": ["P1"] * length,
+            "product_number": product_numbers,
             "active_substance": ["S1"] * length,
             "atc_code": atc_codes,
             "authorisation_status": ["A"] * length,
