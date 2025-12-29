@@ -9,7 +9,7 @@ from requests.adapters import HTTPAdapter
 from coreason_etl_epar.downloader import download_file, fetch_sources
 
 
-@pytest.fixture  # type: ignore[misc]
+@pytest.fixture
 def mock_session_get() -> Iterator[MagicMock]:
     """
     Mocks requests.Session.get, since we now use a session with retries.

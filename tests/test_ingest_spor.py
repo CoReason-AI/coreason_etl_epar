@@ -8,7 +8,7 @@ from dlt.extract.exceptions import ResourceExtractionError
 from coreason_etl_epar.ingest import spor_organisations
 
 
-@pytest.fixture  # type: ignore[misc]
+@pytest.fixture
 def dummy_spor_zip(tmp_path: Path) -> str:
     zip_path = tmp_path / "spor.zip"
 

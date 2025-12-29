@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any, Dict
 
 import pytest
 from pydantic import ValidationError
@@ -7,7 +8,7 @@ from coreason_etl_epar.schema import EPARSourceRow
 
 
 def test_valid_epar_source_row() -> None:
-    data = {
+    data: Dict[str, Any] = {
         "category": "Human",
         "product_number": "EMEA/H/C/001234",
         "medicine_name": "Test Medicine",
@@ -30,7 +31,7 @@ def test_valid_epar_source_row() -> None:
 
 
 def test_optional_fields() -> None:
-    data = {
+    data: Dict[str, Any] = {
         "category": "Human",
         "product_number": "EMEA/H/C/005678",
         "medicine_name": "Refused Medicine",
@@ -47,7 +48,7 @@ def test_optional_fields() -> None:
 
 
 def test_invalid_category() -> None:
-    data = {
+    data: Dict[str, Any] = {
         "category": "Veterinary",
         "product_number": "EMEA/V/C/001234",
         "medicine_name": "Vet Medicine",
@@ -62,7 +63,7 @@ def test_invalid_category() -> None:
 
 
 def test_invalid_product_number_format() -> None:
-    data = {
+    data: Dict[str, Any] = {
         "category": "Human",
         "product_number": "INVALID/123",
         "medicine_name": "Test Medicine",
@@ -81,7 +82,7 @@ def test_pydantic_invalid_date_format() -> None:
     # Pydantic usually handles standard ISO. If dlt provides strings, Pydantic might coerce.
     # But if format is completely wrong "NotADate", it should fail.
 
-    data = {
+    data: Dict[str, Any] = {
         "category": "Human",
         "product_number": "EMEA/H/C/001",
         "medicine_name": "M",
