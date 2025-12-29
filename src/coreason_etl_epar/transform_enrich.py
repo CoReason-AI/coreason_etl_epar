@@ -116,12 +116,14 @@ def enrich_epar(df: pl.DataFrame, spor_df: pl.DataFrame) -> pl.DataFrame:
     )
 
     # 3. ATC Code Explosion
+    # Validate format (L7 standard): Letter, 2 Digits, 2 Letters, 2 Digits (e.g. A01BC01)
+    # Regex: ^[A-Z]\d{2}[A-Z]{2}\d{2}$
     df = df.with_columns(
         pl.col("atc_code")
         .cast(pl.String)
         .str.replace_all(r",", ";")
         .str.split(";")
-        .list.eval(pl.element().str.strip_chars())
+        .list.eval(pl.element().str.strip_chars().filter(pl.element().str.contains(r"^[A-Z]\d{2}[A-Z]{2}\d{2}$")))
         .alias("atc_code_list")
     )
 
