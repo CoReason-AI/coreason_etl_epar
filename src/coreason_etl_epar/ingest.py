@@ -32,9 +32,9 @@ def epar_index(file_path: str) -> Iterator[Dict[str, Any] | Any]:
     # Calculate Metadata
     try:
         file_hash = calculate_file_hash(file_path)
-    except Exception as e:  # pragma: no cover
-        logger.error(f"Failed to calculate hash for {file_path}: {e}")  # pragma: no cover
-        raise  # pragma: no cover
+    except Exception as e:
+        logger.error(f"Failed to calculate hash for {file_path}: {e}")
+        raise
 
     ingestion_ts = datetime.now().isoformat()
 
@@ -42,8 +42,8 @@ def epar_index(file_path: str) -> Iterator[Dict[str, Any] | Any]:
     try:
         df = pl.read_excel(file_path)
     except Exception as e:
-        logger.error(f"Failed to read Excel file: {e}")  # pragma: no cover
-        raise  # pragma: no cover
+        logger.error(f"Failed to read Excel file: {e}")
+        raise
 
     # Clean column names (normalize to snake_case for Pydantic mapping)
     df = df.rename({col: col.strip().lower().replace(" ", "_") for col in df.columns})
@@ -90,7 +90,7 @@ def epar_index(file_path: str) -> Iterator[Dict[str, Any] | Any]:
                 "error_message": str(e),
                 "product_number": product_number,
                 "ingestion_ts": ingestion_ts,  # Use same TS
-                "source_file_hash": file_hash,  # Add hash to quarantine too
+                "source_file_hash": file_hash, # Add hash to quarantine too
             }
             yield dlt.mark.with_table_name(quarantine_record, "_quarantine")
 
@@ -106,9 +106,9 @@ def spor_organisations(file_path: str) -> Iterator[Dict[str, Any]]:
     # Calculate Metadata
     try:
         file_hash = calculate_file_hash(file_path)
-    except Exception as e:  # pragma: no cover
-        logger.error(f"Failed to calculate hash for {file_path}: {e}")  # pragma: no cover
-        raise  # pragma: no cover
+    except Exception as e:
+        logger.error(f"Failed to calculate hash for {file_path}: {e}")
+        raise
 
     ingestion_ts = datetime.now().isoformat()
 
@@ -163,7 +163,7 @@ def spor_organisations(file_path: str) -> Iterator[Dict[str, Any]]:
                                 "roles": roles,
                                 "source_file_hash": file_hash,
                                 "ingestion_ts": ingestion_ts,
-                                "raw_payload": org_data,  # Includes name, org_id, roles
+                                "raw_payload": org_data # Includes name, org_id, roles
                             }
 
                         # Clear element to save memory
@@ -173,5 +173,5 @@ def spor_organisations(file_path: str) -> Iterator[Dict[str, Any]]:
         logger.error(f"Invalid zip file: {file_path}")
         raise
     except Exception as e:
-        logger.error(f"Failed to process SPOR file: {e}")  # pragma: no cover
-        raise  # pragma: no cover
+        logger.error(f"Failed to process SPOR file: {e}")
+        raise
