@@ -5,9 +5,9 @@ from typing import Dict
 
 import dlt
 import polars as pl
-from loguru import logger
 
 from coreason_etl_epar.ingest import epar_index, spor_organisations
+from coreason_etl_epar.logger import logger
 from coreason_etl_epar.transform_enrich import enrich_epar
 from coreason_etl_epar.transform_gold import create_gold_layer
 from coreason_etl_epar.transform_silver import apply_scd2
@@ -146,6 +146,7 @@ class EPARPipeline:
             df.write_parquet(path)
             logger.info(f"Saved Gold table {name}: {df.height} rows")
 
+    @logger.catch
     def execute(self) -> None:
         self.run_ingestion()
         data = self.load_bronze()

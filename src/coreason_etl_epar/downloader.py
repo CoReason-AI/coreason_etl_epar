@@ -2,8 +2,9 @@ from pathlib import Path
 from typing import Optional
 
 import requests
-from loguru import logger
 from requests.adapters import HTTPAdapter
+
+from coreason_etl_epar.logger import logger
 from urllib3.util.retry import Retry
 
 # Endpoints defined in FRD

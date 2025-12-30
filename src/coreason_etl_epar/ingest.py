@@ -5,8 +5,9 @@ from typing import Any, Dict, Iterator, List
 
 import dlt
 import polars as pl
-from loguru import logger
 from pydantic import ValidationError
+
+from coreason_etl_epar.logger import logger
 
 from coreason_etl_epar.schema import EPARSourceRow
 
