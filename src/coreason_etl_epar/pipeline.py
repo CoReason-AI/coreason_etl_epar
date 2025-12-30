@@ -114,7 +114,21 @@ class EPARPipeline:
         ingestion_ts = datetime.now()
 
         # 1. SCD Type 2 (on EPAR)
-        hash_cols = ["authorisation_status", "medicine_name", "marketing_authorisation_holder"]
+        # We track ALL business-relevant columns to ensure Gold/Bridge tables reflect updates.
+        hash_cols = [
+            "authorisation_status",
+            "medicine_name",
+            "marketing_authorisation_holder",
+            "active_substance",
+            "atc_code",
+            "therapeutic_area",
+            "generic",
+            "biosimilar",
+            "orphan",
+            "conditional_approval",
+            "exceptional_circumstances",
+            "url",
+        ]
 
         silver_scd = apply_scd2(
             current_snapshot=bronze_epar,

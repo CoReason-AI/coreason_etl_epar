@@ -132,6 +132,8 @@ def test_pipeline_real_execution(tmp_path: Path) -> None:
                     "generic": [False],
                     "orphan": [False],
                     "therapeutic_area": ["Area"],
+                    "conditional_approval": [False],
+                    "exceptional_circumstances": [False],
                 }
             )
 
