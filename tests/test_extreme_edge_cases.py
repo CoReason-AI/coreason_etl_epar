@@ -2,9 +2,10 @@ from datetime import datetime
 from typing import Any, Dict
 
 import polars as pl
-import pytest
-from coreason_etl_epar.transform_silver import apply_scd2
+
 from coreason_etl_epar.transform_enrich import enrich_epar
+from coreason_etl_epar.transform_silver import apply_scd2
+
 
 def test_scd2_schema_drift_resilience() -> None:
     """
@@ -23,16 +24,13 @@ def test_scd2_schema_drift_resilience() -> None:
     history = pl.DataFrame(schema=schema)
 
     # Snapshot has extra column
-    snapshot = pl.DataFrame({
-        "id": [1],
-        "data": ["V1"],
-        "extra_col": ["Noise"]
-    })
+    snapshot = pl.DataFrame({"id": [1], "data": ["V1"], "extra_col": ["Noise"]})
 
     result = apply_scd2(snapshot, history, "id", ts, ["data"])
 
     assert "extra_col" not in result.columns
     assert result.schema["data"] == pl.String
+
 
 def test_scd2_null_in_hash_cols() -> None:
     """
@@ -64,35 +62,36 @@ def test_scd2_null_in_hash_cols() -> None:
     # So h1 row hash should equal s2 row hash.
     # Therefore, NO update should occur in h2.
 
-    assert h2.height == 1 # Still 1 row, no update
+    assert h2.height == 1  # Still 1 row, no update
     assert h2["is_current"].item() is True
+
 
 def test_enrich_unicode_nightmare() -> None:
     """
     Edge Case: Input strings with Zero Width Spaces, Control Characters, Emojis.
     """
-    dirty_mah = "Big Pharma\u200b Inc." # Zero width space
+    dirty_mah = "Big Pharma\u200b Inc."  # Zero width space
     clean_mah = "Big Pharma Inc."
 
-    df = pl.DataFrame({
-        "product_number": ["P1"],
-        "medicine_name": ["M"],
-        "active_substance": ["S"],
-        "atc_code": ["A"],
-        "marketing_authorisation_holder": [dirty_mah],
-        "authorisation_status": ["A"],
-    })
+    df = pl.DataFrame(
+        {
+            "product_number": ["P1"],
+            "medicine_name": ["M"],
+            "active_substance": ["S"],
+            "atc_code": ["A"],
+            "marketing_authorisation_holder": [dirty_mah],
+            "authorisation_status": ["A"],
+        }
+    )
 
-    spor_df = pl.DataFrame({
-        "name": [clean_mah],
-        "org_id": ["ORG-001"]
-    })
+    spor_df = pl.DataFrame({"name": [clean_mah], "org_id": ["ORG-001"]})
 
     result = enrich_epar(df, spor_df)
 
     # Collect result to check
     mah_id = result["spor_mah_id"].to_list()[0]
     assert mah_id == "ORG-001"
+
 
 def test_gold_creation_empty_silver() -> None:
     """
@@ -102,9 +101,9 @@ def test_gold_creation_empty_silver() -> None:
     from coreason_etl_epar.transform_gold import create_gold_layer
 
     # Empty Silver with correct schema
-    silver_schema = {
+    silver_schema: Dict[str, pl.DataType | Any] = {
         "product_number": pl.String,
-        "base_procedure_id": pl.String, # Added
+        "base_procedure_id": pl.String,  # Added
         "medicine_name": pl.String,
         "active_substance_list": pl.List(pl.String),
         "atc_code_list": pl.List(pl.String),
