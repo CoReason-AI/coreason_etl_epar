@@ -1,3 +1,4 @@
+import hashlib
 import xml.etree.ElementTree as ET
 import zipfile
 from datetime import datetime
@@ -11,6 +12,15 @@ from coreason_etl_epar.logger import logger
 from coreason_etl_epar.schema import EPARSourceRow
 
 
+def calculate_file_hash(file_path: str) -> str:
+    """Calculates MD5 hash of a file."""
+    hash_md5 = hashlib.md5()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
+
+
 @dlt.resource(name="epar_index", write_disposition="replace")
 def epar_index(file_path: str) -> Iterator[Dict[str, Any] | Any]:
     """
@@ -18,6 +28,15 @@ def epar_index(file_path: str) -> Iterator[Dict[str, Any] | Any]:
     Filters for Category == 'Human' and excludes 'Veterinary'.
     """
     logger.info(f"Reading EPAR index from {file_path}")
+
+    # Calculate Metadata
+    try:
+        file_hash = calculate_file_hash(file_path)
+    except Exception as e:
+        logger.error(f"Failed to calculate hash for {file_path}: {e}")
+        raise
+
+    ingestion_ts = datetime.now().isoformat()
 
     # Read Excel using Polars
     try:
@@ -49,7 +68,14 @@ def epar_index(file_path: str) -> Iterator[Dict[str, Any] | Any]:
     for row in filtered_df.iter_rows(named=True):
         try:
             validated_row = EPARSourceRow(**row)
-            yield validated_row.model_dump()
+            data = validated_row.model_dump()
+
+            # Enrich with Metadata
+            data["source_file_hash"] = file_hash
+            data["ingestion_ts"] = ingestion_ts
+            data["raw_payload"] = row
+
+            yield data
 
         except ValidationError as e:
             # Handle None or Missing product_number
@@ -63,7 +89,8 @@ def epar_index(file_path: str) -> Iterator[Dict[str, Any] | Any]:
                 "raw_data": row,
                 "error_message": str(e),
                 "product_number": product_number,
-                "ingestion_ts": datetime.now().isoformat(),
+                "ingestion_ts": ingestion_ts,  # Use same TS
+                "source_file_hash": file_hash,  # Add hash to quarantine too
             }
             yield dlt.mark.with_table_name(quarantine_record, "_quarantine")
 
@@ -75,6 +102,15 @@ def spor_organisations(file_path: str) -> Iterator[Dict[str, Any]]:
     Extracts organizations and filters for 'Marketing Authorisation Holder' role.
     """
     logger.info(f"Reading SPOR organisations from {file_path}")
+
+    # Calculate Metadata
+    try:
+        file_hash = calculate_file_hash(file_path)
+    except Exception as e:
+        logger.error(f"Failed to calculate hash for {file_path}: {e}")
+        raise
+
+    ingestion_ts = datetime.now().isoformat()
 
     try:
         with zipfile.ZipFile(file_path, "r") as z:
@@ -121,7 +157,14 @@ def spor_organisations(file_path: str) -> Iterator[Dict[str, Any]]:
                         is_mah = any("marketing authorisation holder" in r.lower() for r in roles)
 
                         if is_mah:
-                            yield {"org_id": org_data.get("org_id"), "name": org_data.get("name"), "roles": roles}
+                            yield {
+                                "org_id": org_data.get("org_id"),
+                                "name": org_data.get("name"),
+                                "roles": roles,
+                                "source_file_hash": file_hash,
+                                "ingestion_ts": ingestion_ts,
+                                "raw_payload": org_data,  # Includes name, org_id, roles
+                            }
 
                         # Clear element to save memory
                         elem.clear()
