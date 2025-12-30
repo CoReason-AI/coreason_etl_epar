@@ -94,14 +94,64 @@ def test_fetch_sources_success(tmp_path: Path, mock_session_get: MagicMock) -> N
     assert mock_session_get.call_count == 2
 
 
-def test_fetch_sources_failure(tmp_path: Path, mock_session_get: MagicMock) -> None:
-    # Fail on first call
+def test_fetch_sources_epar_failure(tmp_path: Path, mock_session_get: MagicMock) -> None:
+    # Fail on EPAR (first call)
     mock_response = MagicMock()
-    mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError("Error")
+    mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError("EPAR Error")
     mock_session_get.return_value.__enter__.return_value = mock_response
 
-    with pytest.raises(requests.exceptions.HTTPError):
+    with pytest.raises(requests.exceptions.HTTPError, match="EPAR Error"):
         fetch_sources(tmp_path)
+
+
+def test_fetch_sources_spor_failure_no_cache(tmp_path: Path, mock_session_get: MagicMock) -> None:
+    """
+    Test that if SPOR download fails AND no cache exists, it raises exception.
+    """
+
+    # EPAR succeeds, SPOR fails
+    def side_effect(url: str, **kwargs: Any) -> MagicMock:
+        mock_resp = MagicMock()
+        if "Medicines" in url:
+            mock_resp.status_code = 200
+            mock_resp.iter_content.return_value = [b"epar data"]
+        else:
+            mock_resp.raise_for_status.side_effect = requests.exceptions.HTTPError("SPOR Error")
+        mock_resp.__enter__.return_value = mock_resp
+        return mock_resp
+
+    mock_session_get.side_effect = side_effect
+
+    with pytest.raises(requests.exceptions.HTTPError, match="SPOR Error"):
+        fetch_sources(tmp_path)
+
+
+def test_fetch_sources_spor_resilience(tmp_path: Path, mock_session_get: MagicMock) -> None:
+    """
+    Test that if SPOR download fails BUT cache exists, it succeeds with warning.
+    """
+    # Setup Cache
+    spor_cache = tmp_path / "organisations.zip"
+    spor_cache.write_bytes(b"cached spor data")
+
+    # EPAR succeeds, SPOR fails
+    def side_effect(url: str, **kwargs: Any) -> MagicMock:
+        mock_resp = MagicMock()
+        if "Medicines" in url:
+            mock_resp.status_code = 200
+            mock_resp.iter_content.return_value = [b"epar data"]
+        else:
+            mock_resp.raise_for_status.side_effect = requests.exceptions.HTTPError("SPOR Error")
+        mock_resp.__enter__.return_value = mock_resp
+        return mock_resp
+
+    mock_session_get.side_effect = side_effect
+
+    fetch_sources(tmp_path)  # Should not raise
+
+    assert (tmp_path / "medicines_output_european_public_assessment_reports.xlsx").exists()
+    assert spor_cache.exists()
+    assert spor_cache.read_bytes() == b"cached spor data"  # Still the old data
 
 
 # Integration style test for Retry logic.
