@@ -3,9 +3,9 @@ from typing import Optional
 
 import requests
 from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from coreason_etl_epar.logger import logger
-from urllib3.util.retry import Retry
 
 # Endpoints defined in FRD
 URL_EPAR_INDEX = (

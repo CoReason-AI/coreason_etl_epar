@@ -9,7 +9,6 @@
 # Source Code: https://github.com/CoReason-AI/coreason_etl_epar
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
