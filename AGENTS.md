@@ -52,6 +52,39 @@ This project uses **Ruff** for Python linting/formatting, **Mypy** for typing, a
   * *Good:* from loguru import logger -> logger.info("...")
 * **Licensing:** Every .py file must start with the standard license header.
 
+### **Logging & Observability**
+
+The project uses `loguru` exclusively for logging. We have centralized the configuration to ensure consistent output formats and destinations.
+
+**Standards:**
+*   **Library:** Use `loguru` ONLY. Do not use `logging` or `print()`.
+*   **Import:** Always import the configured logger from `coreason_etl_epar.logger`.
+    ```python
+    from coreason_etl_epar.logger import logger
+    ```
+
+**Output Sinks:**
+1.  **Console (Stderr):** Human-readable format (Time | Level | Module | Message).
+2.  **File (`logs/app.log`):** Machine-readable JSON format for ingestion by observability tools. Rotating (500 MB) and Retaining (10 days).
+
+**Usage Example:**
+
+```python
+from coreason_etl_epar.logger import logger
+
+class MyAgent:
+    def run(self):
+        # Context binding is encouraged for tracing
+        logger.bind(task_id="123").info("Agent started task")
+
+        try:
+            # Business logic...
+            ...
+        except Exception:
+            # Exception logging
+            logger.exception("Agent failed to execute task")
+```
+
 ### **Legal & Intellectual Property**
 
 Strict Prohibition on External Code:

@@ -1,7 +1,8 @@
 from typing import Dict
 
 import polars as pl
-from loguru import logger
+
+from coreason_etl_epar.logger import logger
 
 
 def normalize_status(status: str) -> str:
