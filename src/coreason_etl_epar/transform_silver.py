@@ -47,9 +47,13 @@ def apply_scd2(
 
     # 2. Identify Changes
     if history.is_empty():
-        return snapshot_hashed.with_columns(
+        result = snapshot_hashed.with_columns(
             valid_from=pl.lit(ingestion_ts), valid_to=pl.lit(None, dtype=pl.Datetime), is_current=pl.lit(True)
         )
+        # Bootstrap schema if history has no columns
+        if len(history.columns) > 0:
+            return result.select(history.columns)
+        return result
 
     current_history = history.filter(pl.col("is_current"))
     closed_history = history.filter(~pl.col("is_current"))
@@ -88,4 +92,5 @@ def apply_scd2(
     # 5. Union All
     final_history = pl.concat([closed_history, history_to_keep, closed_updates, new_entries], how="diagonal")
 
-    return final_history
+    # Ensure output schema matches history schema (ignore extra columns from snapshot)
+    return final_history.select(history.columns)
