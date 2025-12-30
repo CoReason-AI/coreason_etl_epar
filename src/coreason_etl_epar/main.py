@@ -9,18 +9,12 @@
 # Source Code: https://github.com/CoReason-AI/coreason_etl_epar
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
-from loguru import logger
-
 from coreason_etl_epar.downloader import fetch_sources
+from coreason_etl_epar.logger import logger
 from coreason_etl_epar.pipeline import EPARPipeline
-
-# Configure logger
-logger.remove()
-logger.add(sys.stderr, level=os.getenv("LOG_LEVEL", "INFO"))
 
 
 def parse_args() -> argparse.Namespace:
