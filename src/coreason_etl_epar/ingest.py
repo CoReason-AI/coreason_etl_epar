@@ -90,7 +90,7 @@ def epar_index(file_path: str) -> Iterator[Dict[str, Any] | Any]:
                 "error_message": str(e),
                 "product_number": product_number,
                 "ingestion_ts": ingestion_ts,  # Use same TS
-                "source_file_hash": file_hash, # Add hash to quarantine too
+                "source_file_hash": file_hash,  # Add hash to quarantine too
             }
             yield dlt.mark.with_table_name(quarantine_record, "_quarantine")
 
@@ -163,7 +163,7 @@ def spor_organisations(file_path: str) -> Iterator[Dict[str, Any]]:
                                 "roles": roles,
                                 "source_file_hash": file_hash,
                                 "ingestion_ts": ingestion_ts,
-                                "raw_payload": org_data # Includes name, org_id, roles
+                                "raw_payload": org_data,  # Includes name, org_id, roles
                             }
 
                         # Clear element to save memory
