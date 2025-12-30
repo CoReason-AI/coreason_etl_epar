@@ -146,7 +146,7 @@ class EPARPipeline:
             df.write_parquet(path)
             logger.info(f"Saved Gold table {name}: {df.height} rows")
 
-    @logger.catch  # type: ignore
+    @logger.catch
     def execute(self) -> None:
         self.run_ingestion()
         data = self.load_bronze()
