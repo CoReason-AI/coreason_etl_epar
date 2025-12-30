@@ -99,10 +99,21 @@ def fetch_sources(output_dir: Path, epar_url: Optional[str] = None, spor_url: Op
 
     logger.info("Starting source fetch...")
 
+    # 1. Download EPAR Index (Strict - Must Succeed)
     try:
         download_file(url_epar, epar_path)
-        download_file(url_spor, spor_path)
-        logger.info("All sources fetched successfully.")
     except Exception as e:
-        logger.error(f"Fetch failed: {e}")
+        logger.error(f"EPAR Fetch failed: {e}")
         raise
+
+    # 2. Download SPOR Data (Resilient - Fallback to Cache)
+    try:
+        download_file(url_spor, spor_path)
+    except Exception as e:
+        if spor_path.exists():
+            logger.warning(f"SPOR download failed, using cached file: {e}")
+        else:
+            logger.error(f"SPOR Fetch failed and no cache available: {e}")
+            raise
+
+    logger.info("All sources fetched successfully.")
