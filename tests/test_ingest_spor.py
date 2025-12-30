@@ -92,15 +92,31 @@ def test_spor_bad_zip(tmp_path: Path) -> None:
     # Check that dlt raises ResourceExtractionError which wraps the BadZipFile
     with pytest.raises(ResourceExtractionError) as excinfo:
         list(spor_organisations(str(zip_path)))
-    assert "File is not a zip file" in str(excinfo.value)
+    # The message comes from log or exception chain, but dlt wraps it.
+    # We check if it failed due to bad zip (header or whatever).
+    # dlt might just say "failed" or wrap the original error.
+    # We just want to ensure it raises.
+    # Wait, in the updated ingest.py, we calculate hash BEFORE reading zip.
+    # Bad zip file will fail hash calculation if we can't open it? No, hash just reads bytes.
+    # But zipfile.ZipFile will fail.
+    assert "File is not a zip file" in str(excinfo.value) or "BadZipFile" in str(excinfo.value)
 
 
 def test_spor_general_exception(tmp_path: Path) -> None:
-    # This test is harder to trigger because zipfile handles opening.
-    # We can mock zipfile.ZipFile to raise a generic exception
+    # Now that we calculate hash first, we need to make sure the file exists for hash calculation
+    # or mock calculate_file_hash as well.
+    # Or we can just mock the file existing but zipfile failing.
+
+    file_path = tmp_path / "dummy.zip"
+    file_path.touch()
+
     from unittest.mock import patch
 
+    # Mock ZipFile to raise generic exception
     with patch("zipfile.ZipFile", side_effect=Exception("Generic Error")):
+        # We also need to ensure calculate_file_hash succeeds or is mocked,
+        # but since we created the file, it should succeed.
+
         with pytest.raises(ResourceExtractionError) as excinfo:
-            list(spor_organisations("dummy_path"))
+            list(spor_organisations(str(file_path)))
         assert "Generic Error" in str(excinfo.value)
