@@ -110,10 +110,13 @@ def fetch_sources(output_dir: Path, epar_url: Optional[str] = None, spor_url: Op
     try:
         download_file(url_spor, spor_path)
     except Exception as e:
-        if spor_path.exists():
+        # Check if we have a VALID cache (file exists and is not empty)
+        if spor_path.exists() and spor_path.is_file() and spor_path.stat().st_size > 0:
             logger.warning(f"SPOR download failed, using cached file: {e}")
         else:
-            logger.error(f"SPOR Fetch failed and no cache available: {e}")
+            if spor_path.exists():
+                logger.error("SPOR download failed and cached file is invalid (empty or not a file).")
+            logger.error(f"SPOR Fetch failed and no valid cache available: {e}")
             raise
 
     logger.info("All sources fetched successfully.")
