@@ -98,6 +98,7 @@ def create_gold_layer(silver_df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
                 pl.col("area_list").str.strip_chars().alias("feature_value"),
             ]
         )
+        .filter(pl.col("feature_value").str.len_chars() > 0)
     )
 
     bridge = pl.concat([atc, substance, area])
