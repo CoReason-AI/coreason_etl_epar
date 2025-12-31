@@ -69,6 +69,9 @@ def test_normalize_status() -> None:
     assert normalize_status("Withdrawn") == "WITHDRAWN"
     assert normalize_status("Suspended") == "SUSPENDED"
     assert normalize_status("Exceptional Circumstances") == "EXCEPTIONAL_CIRCUMSTANCES"
+    # Specific qualifiers must not be shadowed by "Authorised"
+    assert normalize_status("Authorised under exceptional circumstances") == "EXCEPTIONAL_CIRCUMSTANCES"
+    assert normalize_status("Conditional Marketing Authorisation") == "CONDITIONAL_APPROVAL"
     assert normalize_status("Unknown Status") == "UNKNOWN"
 
 
