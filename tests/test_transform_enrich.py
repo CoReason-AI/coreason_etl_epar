@@ -1,6 +1,7 @@
 import polars as pl
 
-from coreason_etl_epar.transform_enrich import enrich_epar, jaro_winkler, normalize_status
+from coreason_etl_epar.transform_enrich import enrich_epar, jaro_winkler
+from coreason_etl_epar.transform_silver import clean_epar_bronze, normalize_status
 
 
 def test_jaro_winkler() -> None:
@@ -70,24 +71,27 @@ def test_enrich_epar_logic() -> None:
         }
     )
 
+    # Clean the DataFrame first (Pipeline Simulation)
+    cleaned_df = clean_epar_bronze(df)
+
     # Use names that are very close to satisfy > 0.90 threshold
     spor_df = pl.DataFrame(
         {"name": ["Pharma Corp.", "BioTech Inc.", "Other Co"], "org_id": ["ORG-100", "ORG-200", "ORG-300"]}
     )
 
     # Run Enrichment
-    result = enrich_epar(df, spor_df)
+    result = enrich_epar(cleaned_df, spor_df)
 
-    # Check Base Procedure ID
+    # Check Base Procedure ID (comes from clean_epar_bronze)
     assert result.filter(pl.col("product_number") == "EMEA/H/C/001234")["base_procedure_id"].item() == "001234"
 
-    # Check Substance List
+    # Check Substance List (comes from clean_epar_bronze)
     row1 = result.row(0, named=True)
     assert row1["active_substance_list"] == ["Sub A", "Sub B"]
     row2 = result.row(1, named=True)
     assert row2["active_substance_list"] == ["Sub C", "Sub D"]  # Handled +
 
-    # Check ATC List
+    # Check ATC List (comes from clean_epar_bronze)
     assert row1["atc_code_list"] == ["A01BC01", "B02AA02"]
     assert row2["atc_code_list"] == ["C03BB03", "D04CC04"]  # Handled ,
 
@@ -112,9 +116,11 @@ def test_enrich_epar_no_match() -> None:
         }
     )
 
+    cleaned_df = clean_epar_bronze(df)
+
     spor_df = pl.DataFrame({"name": ["Totally Different"], "org_id": ["ORG-999"]})
 
-    result = enrich_epar(df, spor_df)
+    result = enrich_epar(cleaned_df, spor_df)
     assert result["spor_mah_id"].item() is None
 
 
@@ -134,6 +140,9 @@ def test_enrich_tie_breaker_determinism() -> None:
         }
     )
 
+    # We call clean even if not needed for this specific test to ensure schema consistency if needed
+    cleaned_df = clean_epar_bronze(df)
+
     # SPOR data with duplicates or very similar
     spor_df = pl.DataFrame(
         {
@@ -142,7 +151,7 @@ def test_enrich_tie_breaker_determinism() -> None:
         }
     )
 
-    result = enrich_epar(df, spor_df)
+    result = enrich_epar(cleaned_df, spor_df)
 
     # Assert
     assert result["spor_mah_id"].item() == "ORG-001"
@@ -150,10 +159,6 @@ def test_enrich_tie_breaker_determinism() -> None:
 
 def test_unicode_handling() -> None:
     # Enrichment (Jaro-Winkler with unicode)
-    # "Société" vs "Societe"
-    # Matches: S,o,c,i,t (5). é vs e is mismatch.
-    # Should calculate a score.
-    # Just ensure it doesn't crash.
     score = jaro_winkler("Société", "Societe")
     assert score > 0.0
 
@@ -169,14 +174,17 @@ def test_enrich_epar_empty_spor() -> None:
         }
     )
 
+    cleaned_df = clean_epar_bronze(df)
+
     spor_df = pl.DataFrame(schema={"name": pl.String, "org_id": pl.String})
 
-    result = enrich_epar(df, spor_df)
+    result = enrich_epar(cleaned_df, spor_df)
     assert result["spor_mah_id"].item() is None
 
 
 def test_atc_code_validation() -> None:
     # Test strict L7 validation (Regex: ^[A-Z]\d{2}[A-Z]{2}\d{2}$)
+    # Now this logic resides in clean_epar_bronze
     atc_codes = [
         "A01BC01",  # Valid
         "X01",  # Too short
@@ -200,9 +208,10 @@ def test_atc_code_validation() -> None:
             "marketing_authorisation_holder": ["H"] * length,
         }
     )
-    spor_df = pl.DataFrame({"name": ["H"], "org_id": ["O1"]})
 
-    result = enrich_epar(df, spor_df)
+    # Run cleaning
+    result = clean_epar_bronze(df)
+
     atc_lists = result["atc_code_list"].to_list()
 
     assert atc_lists[0] == ["A01BC01"]  # Valid kept
@@ -211,37 +220,17 @@ def test_atc_code_validation() -> None:
     assert atc_lists[3] == []  # Wrong start dropped
     assert atc_lists[4] == []  # Wrong format dropped
     assert atc_lists[5] == ["A01BC01"]  # Mixed: keep valid, drop invalid
-    assert atc_lists[6] is None  # Null stays None (or empty list depending on impl, split returns null on null input)
+    assert atc_lists[6] is None  # Null stays None
 
 
 def test_jaro_winkler_unicode() -> None:
-    # Test normalization and unicode chars
-    # "café" vs "cafe"
-    # é is U+00E9. e is U+0065.
     s1 = "café"
     s2 = "cafe"
     score = jaro_winkler(s1, s2)
-    # They share c,a,f. 4th char differs.
-    # Score should be high but not 1.0.
     assert 0.8 < score < 1.0
 
-    # NFD normalization check?
-    # s1 = 'e\u0301' (e + acute accent)
-    # s2 = '\u00e9' (é)
-    # Pure python string equality checks glyphs if normalized?
-    # Python str handles unicode naturally but == depends on normalization.
-    # We don't implement explicit normalization in our function, so they might mismatch.
-    # This is an edge case: we verify our function behaves safely (no crash) and returns expected non-1.0
-    # if raw codepoints differ.
     s_nfd = "cafe\u0301"
     s_nfc = "caf\u00e9"
-    # On most systems these are different strings.
     assert s_nfd != s_nfc
     score_norm = jaro_winkler(s_nfd, s_nfc)
-    # c,a,f,e match. \u0301 (accent) is left over in s_nfd.
-    # s_nfc has \u00e9 which doesn't match e or accent?
-    # Actually s_nfc[3] is \u00e9. s_nfd[3] is e.
-    # So they match on c,a,f,e.
-    # s_nfd has length 5. s_nfc has length 4.
-    # High score expected.
     assert score_norm > 0.8

@@ -10,7 +10,7 @@ from coreason_etl_epar.ingest import epar_index, spor_organisations
 from coreason_etl_epar.logger import logger
 from coreason_etl_epar.transform_enrich import enrich_epar
 from coreason_etl_epar.transform_gold import create_gold_layer
-from coreason_etl_epar.transform_silver import apply_scd2
+from coreason_etl_epar.transform_silver import apply_scd2, clean_epar_bronze
 
 
 class EPARPipeline:
@@ -113,14 +113,20 @@ class EPARPipeline:
 
         ingestion_ts = datetime.now()
 
+        # 0. Clean and Normalize Bronze
+        # We clean FIRST to ensure SCD2 tracks changes on normalized data (avoiding false positives from format issues)
+        cleaned_epar = clean_epar_bronze(bronze_epar)
+
         # 1. SCD Type 2 (on EPAR)
         # We track ALL business-relevant columns to ensure Gold/Bridge tables reflect updates.
+        # We use NORMALIZED columns where available (status_normalized, active_substance_list, atc_code_list)
+        # to ensure semantic change detection.
         hash_cols = [
-            "authorisation_status",
+            "status_normalized",  # Replaces authorisation_status
             "medicine_name",
             "marketing_authorisation_holder",
-            "active_substance",
-            "atc_code",
+            "active_substance_list",  # Replaces active_substance
+            "atc_code_list",  # Replaces atc_code
             "therapeutic_area",
             "generic",
             "biosimilar",
@@ -131,7 +137,7 @@ class EPARPipeline:
         ]
 
         silver_scd = apply_scd2(
-            current_snapshot=bronze_epar,
+            current_snapshot=cleaned_epar,
             history=silver_history,
             primary_key="product_number",
             ingestion_ts=ingestion_ts,

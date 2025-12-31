@@ -5,12 +5,132 @@ from typing import List
 import polars as pl
 
 
+def normalize_status(status: str) -> str:
+    """
+    Standardizes Authorisation Status to Enum values.
+    """
+    s = status.strip().upper()
+    if "AUTHORISED" in s:
+        return "APPROVED"
+    if "CONDITIONAL" in s:
+        return "CONDITIONAL_APPROVAL"
+    if "EXCEPTIONAL" in s:
+        return "EXCEPTIONAL_CIRCUMSTANCES"
+    if "REFUSED" in s:
+        return "REJECTED"
+    if "WITHDRAWN" in s:
+        return "WITHDRAWN"
+    if "SUSPENDED" in s:
+        return "SUSPENDED"
+    return "UNKNOWN"  # Fallback
+
+
+def clean_epar_bronze(df: pl.DataFrame) -> pl.DataFrame:
+    """
+    Cleans and normalizes the Bronze EPAR DataFrame.
+    - Strips invisible characters (\\u200b).
+    - Normalizes multi-value fields (substance, atc_code).
+    - Normalizes status.
+    - Derives base_procedure_id.
+    """
+    # Use lazy API for efficiency, then collect
+    lf = df.lazy()
+
+    # 1. Strip Invisible Characters from ALL String columns
+    # We target specific columns known to be strings or select by type
+    # For safety, we target the business columns.
+    string_cols = [
+        "medicine_name",
+        "marketing_authorisation_holder",
+        "active_substance",
+        "atc_code",
+        "therapeutic_area",
+        "authorisation_status",
+        "url",
+        "product_number",
+    ]
+    # Check if cols exist (some might be missing in older versions, but schema enforces them)
+    existing_cols = [c for c in string_cols if c in df.columns]
+
+    for col in existing_cols:
+        # regex replace \u200b with empty string
+        # cast to String first to handle Null type columns (all nulls)
+        lf = lf.with_columns(pl.col(col).cast(pl.String).str.replace_all(r"[\u200b]", ""))
+
+    # 2. Base Procedure ID
+    # Regex extract EMEA/H/C/(\d+)
+    lf = lf.with_columns(pl.col("product_number").str.extract(r"EMEA/H/C/(\d+)", 1).alias("base_procedure_id"))
+
+    # 3. Substance Normalization (Split to List)
+    # Replace + with / first then split
+    if "active_substance" in df.columns:
+        lf = lf.with_columns(
+            pl.col("active_substance")
+            .cast(pl.String)
+            .str.replace_all(r"\+", "/")
+            .str.split("/")
+            .list.eval(pl.element().str.strip_chars())
+            .list.eval(pl.element().filter(pl.element().str.len_chars() > 0))  # Filter empty strings
+            .alias("active_substance_list")
+        )
+    else:
+        lf = lf.with_columns(pl.lit(None, dtype=pl.List(pl.String)).alias("active_substance_list"))
+
+    # 4. ATC Code Explosion
+    # Validate format (L7 standard): Letter, 2 Digits, 2 Letters, 2 Digits (e.g. A01BC01)
+    if "atc_code" in df.columns:
+        lf = lf.with_columns(
+            pl.col("atc_code")
+            .cast(pl.String)
+            .str.to_uppercase()
+            .str.replace_all(r",", ";")
+            .str.split(";")
+            .list.eval(pl.element().str.strip_chars())
+            .list.eval(pl.element().filter(pl.element().str.len_chars() > 0))  # Filter empty strings
+            .list.eval(
+                pl.element().filter(pl.element().str.contains(r"^[A-Z]\d{2}[A-Z]{2}\d{2}$"))
+            )  # Strict L7 Validation
+            .alias("atc_code_list")
+        )
+    else:
+        lf = lf.with_columns(pl.lit(None, dtype=pl.List(pl.String)).alias("atc_code_list"))
+
+    # 5. Status Standardization
+    if "authorisation_status" in df.columns:
+        lf = lf.with_columns(
+            pl.col("authorisation_status")
+            .map_elements(normalize_status, return_dtype=pl.String)
+            .alias("status_normalized")
+        )
+    else:
+        lf = lf.with_columns(pl.lit(None, dtype=pl.String).alias("status_normalized"))
+
+    return lf.collect()
+
+
 def generate_row_hash(df: pl.DataFrame, columns: List[str]) -> pl.DataFrame:
     """
     Generates an MD5 hash of the specified columns for each row.
     Adds a 'row_hash' column.
     """
-    expr = pl.concat_str([pl.col(c).cast(pl.String).fill_null("") for c in columns], separator="|")
+    exprs = []
+    schema = df.schema
+    for c in columns:
+        dtype = schema.get(c)
+        if dtype is None:
+            # Fallback for missing columns (shouldn't happen if validated)
+            exprs.append(pl.lit(""))
+        elif isinstance(dtype, pl.List):
+            # List types cannot be cast to String directly in recent Polars
+            # Join with semicolon to create string repr
+            # Handle nulls inside list? .list.join ignores nulls usually or joins them?
+            # We want a deterministic string.
+            # .list.join returns String. fill_null handled after.
+            exprs.append(pl.col(c).list.join(";").fill_null(""))
+        else:
+            exprs.append(pl.col(c).cast(pl.String).fill_null(""))
+
+    expr = pl.concat_str(exprs, separator="|")
 
     return df.with_columns(
         row_hash=expr.map_elements(lambda x: hashlib.md5(x.encode()).hexdigest(), return_dtype=pl.String)
@@ -28,7 +148,7 @@ def apply_scd2(
     Applies SCD Type 2 logic to merge a new snapshot into the existing history.
 
     Args:
-        current_snapshot: The new data (Bronze)
+        current_snapshot: The new data (Cleaned Bronze)
         history: The existing history (Silver). Schema must include:
                  [primary_key, ..., valid_from, valid_to, is_current, row_hash]
         primary_key: The column name for the join key.
