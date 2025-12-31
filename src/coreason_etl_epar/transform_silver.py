@@ -10,18 +10,18 @@ def normalize_status(status: str) -> str:
     Standardizes Authorisation Status to Enum values.
     """
     s = status.strip().upper()
-    if "AUTHORISED" in s:
-        return "APPROVED"
-    if "CONDITIONAL" in s:
-        return "CONDITIONAL_APPROVAL"
-    if "EXCEPTIONAL" in s:
-        return "EXCEPTIONAL_CIRCUMSTANCES"
     if "REFUSED" in s:
         return "REJECTED"
     if "WITHDRAWN" in s:
         return "WITHDRAWN"
     if "SUSPENDED" in s:
         return "SUSPENDED"
+    if "CONDITIONAL" in s:
+        return "CONDITIONAL_APPROVAL"
+    if "EXCEPTIONAL" in s:
+        return "EXCEPTIONAL_CIRCUMSTANCES"
+    if "AUTHORISED" in s:
+        return "APPROVED"
     return "UNKNOWN"  # Fallback
 
 
