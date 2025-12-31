@@ -5,26 +5,6 @@ import polars as pl
 from coreason_etl_epar.logger import logger
 
 
-def normalize_status(status: str) -> str:
-    """
-    Standardizes Authorisation Status to Enum values.
-    """
-    s = status.strip().upper()
-    if "AUTHORISED" in s:
-        return "APPROVED"
-    if "CONDITIONAL" in s:
-        return "CONDITIONAL_APPROVAL"
-    if "EXCEPTIONAL" in s:
-        return "EXCEPTIONAL_CIRCUMSTANCES"
-    if "REFUSED" in s:
-        return "REJECTED"
-    if "WITHDRAWN" in s:
-        return "WITHDRAWN"
-    if "SUSPENDED" in s:
-        return "SUSPENDED"
-    return "UNKNOWN"  # Fallback
-
-
 def jaro_winkler(s1: str, s2: str) -> float:
     """
     Pure Python implementation of Jaro-Winkler distance.
@@ -91,54 +71,22 @@ def jaro_winkler(s1: str, s2: str) -> float:
 
 def enrich_epar(df: pl.DataFrame, spor_df: pl.DataFrame) -> pl.DataFrame:
     """
-    Applies cleaning and enrichment to EPAR dataframe using Lazy API and Streaming.
+    Applies SPOR enrichment to EPAR dataframe using Lazy API and Streaming.
+    Assumes `df` is already cleaned and normalized.
 
     Args:
-        df: Silver EPAR dataframe.
+        df: Cleaned Silver EPAR dataframe.
         spor_df: Silver SPOR Organisations dataframe (must have 'name', 'org_id').
 
     Returns:
-        Enriched DataFrame with cleaned fields and spor_mah_id.
+        Enriched DataFrame with 'spor_mah_id'.
     """
     # Convert to LazyFrame
     lf = df.lazy()
     spor_lf = spor_df.lazy()
 
-    # 1. Base Procedure ID
-    # Regex extract EMEA/H/C/(\d+)
-    lf = lf.with_columns(pl.col("product_number").str.extract(r"EMEA/H/C/(\d+)", 1).alias("base_procedure_id"))
-
-    # 2. Substance Normalization (Split to List)
-    # Refined Substance: Replace + with / first then split
-    lf = lf.with_columns(
-        pl.col("active_substance")
-        .cast(pl.String)
-        .str.replace_all(r"\+", "/")
-        .str.split("/")
-        .list.eval(pl.element().str.strip_chars())
-        .list.eval(pl.element().filter(pl.element().str.len_chars() > 0))  # Filter empty strings
-        .alias("active_substance_list")
-    )
-
-    # 3. ATC Code Explosion
-    # Validate format (L7 standard): Letter, 2 Digits, 2 Letters, 2 Digits (e.g. A01BC01)
-    # Regex: ^[A-Z]\d{2}[A-Z]{2}\d{2}$
-    lf = lf.with_columns(
-        pl.col("atc_code")
-        .cast(pl.String)
-        .str.to_uppercase()  # Normalize to uppercase before validation
-        .str.replace_all(r",", ";")
-        .str.split(";")
-        .list.eval(pl.element().str.strip_chars())
-        .list.eval(pl.element().filter(pl.element().str.len_chars() > 0))  # Filter empty strings
-        .list.eval(pl.element().filter(pl.element().str.contains(r"^[A-Z]\d{2}[A-Z]{2}\d{2}$")))
-        .alias("atc_code_list")
-    )
-
-    # 4. Status Standardization
-    lf = lf.with_columns(
-        pl.col("authorisation_status").map_elements(normalize_status, return_dtype=pl.String).alias("status_normalized")
-    )
+    # NOTE: Normalization logic (Base Procedure ID, Substance, ATC, Status)
+    # moved to clean_epar_bronze in transform_silver.py
 
     # 5. Organization Enrichment (Fuzzy Join)
     # We need to map 'marketing_authorisation_holder' to 'spor_org_id'.
