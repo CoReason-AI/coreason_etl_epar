@@ -4,7 +4,7 @@ from typing import Any, Dict
 import polars as pl
 
 from coreason_etl_epar.transform_enrich import enrich_epar
-from coreason_etl_epar.transform_silver import apply_scd2
+from coreason_etl_epar.transform_silver import apply_scd2, clean_epar_bronze
 
 
 def test_scd2_conflicting_duplicates() -> None:
@@ -61,9 +61,11 @@ def test_enrich_chaos_strings() -> None:
         }
     )
 
+    cleaned_df = clean_epar_bronze(df)
+
     spor_df = pl.DataFrame(schema={"name": pl.String, "org_id": pl.String})
 
-    result = enrich_epar(df, spor_df)
+    result = enrich_epar(cleaned_df, spor_df)
 
     # Check Substance
     subs = result["active_substance_list"].to_list()[0]
@@ -74,9 +76,6 @@ def test_enrich_chaos_strings() -> None:
     # Note: Enrich normalizes ATC. "A01" is invalid format (too short), "B02" invalid.
     # The valid regex is ^[A-Z]\d{2}[A-Z]{2}\d{2}$ (e.g. A01BC01).
     # "A01", "B02", "C03" do NOT match the regex, so they should be filtered OUT.
-    # Wait, let's verify regex behavior.
-    # A01 is L7? No, it's L3.
-    # So actually, if I input short codes, the result list should be EMPTY.
 
     atc = result["atc_code_list"].to_list()[0]
     assert atc == []  # All filtered out because they don't match L7 format

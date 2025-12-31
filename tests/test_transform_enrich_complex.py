@@ -12,6 +12,7 @@ import polars as pl
 import pytest
 
 from coreason_etl_epar.transform_enrich import enrich_epar
+from coreason_etl_epar.transform_silver import clean_epar_bronze
 
 
 @pytest.fixture
@@ -36,6 +37,8 @@ def test_enrich_tie_breaking(base_epar_df: pl.DataFrame) -> None:
     Code sorts by: ["score", "spor_id"], descending=[True, False] -> Score DESC, SPOR ID ASC.
     So strict match should pick the one with the 'smaller' (lexicographically) ID.
     """
+    cleaned_df = clean_epar_bronze(base_epar_df)
+
     spor_df = pl.DataFrame(
         {
             "name": ["Pharma Corp", "Pharma Corp"],  # Identical Names = Identical Score
@@ -44,7 +47,7 @@ def test_enrich_tie_breaking(base_epar_df: pl.DataFrame) -> None:
         }
     )
 
-    result = enrich_epar(base_epar_df, spor_df)
+    result = enrich_epar(cleaned_df, spor_df)
 
     # Expectation: Pick ORG-100 because 'ORG-100' < 'ORG-200'
     assert result["spor_mah_id"].item() == "ORG-100"
@@ -59,10 +62,12 @@ def test_enrich_substance_parsing_complex(base_epar_df: pl.DataFrame) -> None:
     # -> Strip -> "Substance A", "Substance B", "Substance C", "", "", ""
     # -> Filter -> "Substance A", "Substance B", "Substance C"
     df = base_epar_df.with_columns(active_substance=pl.lit("Substance A + Substance B /  Substance C  / / + "))
+    cleaned_df = clean_epar_bronze(df)
     spor_df = pl.DataFrame(schema={"name": pl.String, "org_id": pl.String})
 
-    result = enrich_epar(df, spor_df)
+    result = enrich_epar(cleaned_df, spor_df)
 
+    # Note: active_substance_list is now in cleaned_df, passed to result.
     substances = result["active_substance_list"].item()
     # Sort for deterministic assertion
     assert sorted(substances) == ["Substance A", "Substance B", "Substance C"]
@@ -84,9 +89,10 @@ def test_enrich_atc_validation_complex(base_epar_df: pl.DataFrame) -> None:
     input_str = "a01bc01, A01BC01, XYZ, A01BC012, B02BD02, , ;;"
 
     df = base_epar_df.with_columns(atc_code=pl.lit(input_str))
+    cleaned_df = clean_epar_bronze(df)
     spor_df = pl.DataFrame(schema={"name": pl.String, "org_id": pl.String})
 
-    result = enrich_epar(df, spor_df)
+    result = enrich_epar(cleaned_df, spor_df)
 
     # .item() on a List column might return a Series in some Polars versions or if not cast?
     # Safer to use .to_list()[0] which guarantees Python list of lists -> take first.
@@ -110,9 +116,10 @@ def test_enrich_empty_spor(base_epar_df: pl.DataFrame) -> None:
     Edge Case: SPOR dataframe is completely empty.
     Should not crash, spor_mah_id should be null.
     """
+    cleaned_df = clean_epar_bronze(base_epar_df)
     spor_df = pl.DataFrame(schema={"name": pl.String, "org_id": pl.String})
 
-    result = enrich_epar(base_epar_df, spor_df)
+    result = enrich_epar(cleaned_df, spor_df)
 
     assert result["spor_mah_id"].item() is None
     assert "active_substance_list" in result.columns
@@ -125,9 +132,10 @@ def test_enrich_null_inputs(base_epar_df: pl.DataFrame) -> None:
     df = base_epar_df.with_columns(
         active_substance=pl.lit(None, dtype=pl.String), atc_code=pl.lit(None, dtype=pl.String)
     )
+    cleaned_df = clean_epar_bronze(df)
     spor_df = pl.DataFrame(schema={"name": pl.String, "org_id": pl.String})
 
-    result = enrich_epar(df, spor_df)
+    result = enrich_epar(cleaned_df, spor_df)
 
     # Check that it didn't crash and returns nulls
     assert result["active_substance_list"].item() is None
