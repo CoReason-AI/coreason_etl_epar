@@ -52,7 +52,8 @@ def apply_scd2(
         )
         # Bootstrap schema if history has no columns
         if len(history.columns) > 0:
-            return result.select(history.columns)
+            # Enforce exact schema types from history to prevent 'Null' vs 'String' issues
+            return result.select([pl.col(c).cast(history.schema[c]) for c in history.columns])
         return result
 
     current_history = history.filter(pl.col("is_current"))
@@ -93,4 +94,4 @@ def apply_scd2(
     final_history = pl.concat([closed_history, history_to_keep, closed_updates, new_entries], how="diagonal")
 
     # Ensure output schema matches history schema (ignore extra columns from snapshot)
-    return final_history.select(history.columns)
+    return final_history.select([pl.col(c).cast(history.schema[c]) for c in history.columns])
