@@ -109,7 +109,20 @@ def clean_epar_bronze(df: pl.DataFrame) -> pl.DataFrame:
     else:
         lf = lf.with_columns(pl.lit(None, dtype=pl.List(pl.String)).alias("atc_code_list"))
 
-    # 5. Status Standardization
+    # 5. Therapeutic Area Normalization
+    if "therapeutic_area" in df.columns:
+        lf = lf.with_columns(
+            pl.col("therapeutic_area")
+            .cast(pl.String)
+            .str.split(";")
+            .list.eval(pl.element().str.strip_chars())
+            .list.eval(pl.element().filter(pl.element().str.len_chars() > 0))
+            .alias("therapeutic_area_list")
+        )
+    else:
+        lf = lf.with_columns(pl.lit(None, dtype=pl.List(pl.String)).alias("therapeutic_area_list"))
+
+    # 6. Status Standardization
     if "authorisation_status" in df.columns:
         lf = lf.with_columns(get_status_normalization_expr("authorisation_status").alias("status_normalized"))
     else:
