@@ -48,7 +48,7 @@ def test_clean_epar_normalization() -> None:
 
     # 2. Substance (List)
     subs = cleaned["active_substance_list"][0].to_list()
-    assert sorted(subs) == ["Sub A", "Sub B", "Sub C"]
+    assert subs == ["Sub A", "Sub B", "Sub C"]  # Already sorted
 
     # 3. ATC Code (List)
     atcs = cleaned["atc_code_list"][0].to_list()
@@ -159,7 +159,7 @@ def test_clean_epar_atc_dirty_extraction() -> None:
     assert cleaned["atc_code_list"][0].to_list() == ["A01BC01"]
 
     # Check Row 2
-    assert sorted(cleaned["atc_code_list"][1].to_list()) == ["B02AA02", "C03BB03"]
+    assert cleaned["atc_code_list"][1].to_list() == ["B02AA02", "C03BB03"]  # Already sorted
 
     # Check Row 3 (Should be empty list, not Null list, because input string was not Null)
     # Wait, my logic filters non-matches. If all filtered, it returns empty list.
@@ -185,8 +185,7 @@ def test_clean_epar_therapeutic_area() -> None:
     # Check Row 1
     assert "therapeutic_area_list" in cleaned.columns
     t1 = cleaned["therapeutic_area_list"][0].to_list()
-    assert "Cancer" in t1
-    assert "Diabetes" in t1
+    assert t1 == ["Cancer", "Diabetes"]  # Sorted
 
     # Check Row 2
     t2 = cleaned["therapeutic_area_list"][1].to_list()
