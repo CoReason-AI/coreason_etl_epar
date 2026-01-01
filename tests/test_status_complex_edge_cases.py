@@ -1,4 +1,12 @@
-from coreason_etl_epar.transform_silver import normalize_status
+import polars as pl
+
+from coreason_etl_epar.transform_silver import get_status_normalization_expr
+
+
+def run_status_norm(status: str) -> str:
+    """Helper to run the expression on a single string."""
+    df = pl.DataFrame({"status": [status]})
+    return str(df.select(get_status_normalization_expr("status").alias("res"))["res"].item())
 
 
 def test_status_terminal_priority() -> None:
@@ -6,40 +14,36 @@ def test_status_terminal_priority() -> None:
     Terminal states (Withdrawn, Refused, Suspended) should take precedence
     over qualifiers like Conditional or Exceptional.
     """
-    # "Withdrawn" AND "Conditional" -> Should be WITHDRAWN
-    # Current logic (Conditional first) will likely fail here
-    assert normalize_status("Withdrawn (prior Conditional approval)") == "WITHDRAWN"
-
-    # "Refused" AND "Exceptional" -> Should be REJECTED
-    assert normalize_status("Refused (under Exceptional Circumstances)") == "REJECTED"
-
-    # "Suspended" AND "Authorised" -> Should be SUSPENDED
-    assert normalize_status("Suspended Marketing Authorisation") == "SUSPENDED"
+    assert run_status_norm("Withdrawn (prior Conditional approval)") == "WITHDRAWN"
+    assert run_status_norm("Refused (under Exceptional Circumstances)") == "REJECTED"
+    assert run_status_norm("Suspended Marketing Authorisation") == "SUSPENDED"
 
 
 def test_status_formatting_edge_cases() -> None:
     """
     Test odd formatting, casing, and spacing.
     """
-    assert normalize_status("  WITHDRAWN  ") == "WITHDRAWN"
-    assert normalize_status("conditional marketing authorisation") == "CONDITIONAL_APPROVAL"
-    # Test internal whitespace/tabs if cleaned first? normalization strips \u200b but here we test the util directly
-    assert normalize_status("Authorised\t") == "APPROVED"
-    assert normalize_status("") == "UNKNOWN"
-    assert normalize_status("---") == "UNKNOWN"
+    assert run_status_norm("  WITHDRAWN  ") == "WITHDRAWN"
+    assert run_status_norm("conditional marketing authorisation") == "CONDITIONAL_APPROVAL"
+    assert run_status_norm("Authorised\t") == "APPROVED"
+    assert run_status_norm("") == "UNKNOWN"
+    assert run_status_norm("---") == "UNKNOWN"
 
 
 def test_status_multiple_qualifiers() -> None:
     """
     Test combinations of qualifiers.
     """
-    # "Conditional" AND "Exceptional" -> Hard to say which wins, but usually Exceptional is a sub-condition
-    # of how it's authorised.
-    # However, for this exercise, we just ensure it doesn't default to APPROVED or UNKNOWN.
-    # If both are present, either is better than APPROVED.
-    # Let's assume Conditional is the 'stronger' regulatory status label for the graph if both appear,
-    # but strictly speaking they are distinct attributes.
-    # We will just assert it is NOT "APPROVED".
-    res = normalize_status("Conditional approval under exceptional circumstances")
+    res = run_status_norm("Conditional approval under exceptional circumstances")
     assert res in ["CONDITIONAL_APPROVAL", "EXCEPTIONAL_CIRCUMSTANCES"]
     assert res != "APPROVED"
+
+
+def test_status_not_authorised_defect() -> None:
+    """
+    Defect Fix Verification: 'Not Authorised' should NOT map to 'APPROVED'.
+    It should fall through to UNKNOWN (or REJECTED if we changed logic, but plan said UNKNOWN).
+    """
+    assert run_status_norm("Not Authorised") == "UNKNOWN"
+    # Ensure standard Authorised still works
+    assert run_status_norm("Marketing Authorised") == "APPROVED"

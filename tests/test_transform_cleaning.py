@@ -1,6 +1,6 @@
 import polars as pl
 
-from coreason_etl_epar.transform_silver import clean_epar_bronze, normalize_status
+from coreason_etl_epar.transform_silver import clean_epar_bronze
 
 
 def test_clean_epar_invisible_chars() -> None:
@@ -60,19 +60,43 @@ def test_clean_epar_normalization() -> None:
     assert cleaned["status_normalized"][0] == "CONDITIONAL_APPROVAL"
 
 
-def test_normalize_status() -> None:
+def test_clean_epar_status_normalization() -> None:
     """
-    Test status normalization logic directly.
+    Test status normalization logic via clean_epar_bronze.
     """
-    assert normalize_status("Authorised") == "APPROVED"
-    assert normalize_status("Refused") == "REJECTED"
-    assert normalize_status("Withdrawn") == "WITHDRAWN"
-    assert normalize_status("Suspended") == "SUSPENDED"
-    assert normalize_status("Exceptional Circumstances") == "EXCEPTIONAL_CIRCUMSTANCES"
-    # Specific qualifiers must not be shadowed by "Authorised"
-    assert normalize_status("Authorised under exceptional circumstances") == "EXCEPTIONAL_CIRCUMSTANCES"
-    assert normalize_status("Conditional Marketing Authorisation") == "CONDITIONAL_APPROVAL"
-    assert normalize_status("Unknown Status") == "UNKNOWN"
+    data = {
+        "product_number": [f"P{i}" for i in range(7)],
+        "medicine_name": ["M"] * 7,
+        "authorisation_status": [
+            "Authorised",
+            "Refused",
+            "Withdrawn",
+            "Suspended",
+            "Exceptional Circumstances",
+            "Authorised under exceptional circumstances",
+            "Conditional Marketing Authorisation",
+        ],
+    }
+    df = pl.DataFrame(data)
+    cleaned = clean_epar_bronze(df)
+    results = cleaned["status_normalized"].to_list()
+
+    expected = [
+        "APPROVED",
+        "REJECTED",
+        "WITHDRAWN",
+        "SUSPENDED",
+        "EXCEPTIONAL_CIRCUMSTANCES",
+        "EXCEPTIONAL_CIRCUMSTANCES",
+        "CONDITIONAL_APPROVAL",
+    ]
+    assert results == expected
+
+    # Test UNKNOWN
+    df_unk = pl.DataFrame(
+        {"product_number": ["P1"], "medicine_name": ["M"], "authorisation_status": ["Unknown Status"]}
+    )
+    assert clean_epar_bronze(df_unk)["status_normalized"][0] == "UNKNOWN"
 
 
 def test_clean_epar_empty_optional_fields() -> None:

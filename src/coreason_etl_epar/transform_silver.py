@@ -5,24 +5,30 @@ from typing import List
 import polars as pl
 
 
-def normalize_status(status: str) -> str:
+def get_status_normalization_expr(col_name: str) -> pl.Expr:
     """
-    Standardizes Authorisation Status to Enum values.
+    Returns a Polars expression to normalize Authorisation Status.
+    Strictly prioritized: Refused > Withdrawn > Suspended > Conditional > Exceptional > Approved.
     """
-    s = status.strip().upper()
-    if "REFUSED" in s:
-        return "REJECTED"
-    if "WITHDRAWN" in s:
-        return "WITHDRAWN"
-    if "SUSPENDED" in s:
-        return "SUSPENDED"
-    if "CONDITIONAL" in s:
-        return "CONDITIONAL_APPROVAL"
-    if "EXCEPTIONAL" in s:
-        return "EXCEPTIONAL_CIRCUMSTANCES"
-    if "AUTHORISED" in s:
-        return "APPROVED"
-    return "UNKNOWN"  # Fallback
+    col = pl.col(col_name).str.strip_chars().str.to_uppercase()
+    return (
+        pl.when(col.str.contains("REFUSED"))
+        .then(pl.lit("REJECTED"))
+        .when(col.str.contains("WITHDRAWN"))
+        .then(pl.lit("WITHDRAWN"))
+        .when(col.str.contains("SUSPENDED"))
+        .then(pl.lit("SUSPENDED"))
+        .when(col.str.contains("CONDITIONAL"))
+        .then(pl.lit("CONDITIONAL_APPROVAL"))
+        .when(col.str.contains("EXCEPTIONAL"))
+        .then(pl.lit("EXCEPTIONAL_CIRCUMSTANCES"))
+        # FIX: Ensure "AUTHORISED" does not match "NOT AUTHORISED"
+        # We require it contains "AUTHORISED" AND DOES NOT contain "NOT "
+        # We assume "NOT " (with space) or just "NOT" is enough signal for negation.
+        .when(col.str.contains("AUTHORISED") & ~col.str.contains("NOT "))
+        .then(pl.lit("APPROVED"))
+        .otherwise(pl.lit("UNKNOWN"))
+    )
 
 
 def clean_epar_bronze(df: pl.DataFrame) -> pl.DataFrame:
@@ -97,11 +103,7 @@ def clean_epar_bronze(df: pl.DataFrame) -> pl.DataFrame:
 
     # 5. Status Standardization
     if "authorisation_status" in df.columns:
-        lf = lf.with_columns(
-            pl.col("authorisation_status")
-            .map_elements(normalize_status, return_dtype=pl.String)
-            .alias("status_normalized")
-        )
+        lf = lf.with_columns(get_status_normalization_expr("authorisation_status").alias("status_normalized"))
     else:
         lf = lf.with_columns(pl.lit(None, dtype=pl.String).alias("status_normalized"))
 
