@@ -127,7 +127,7 @@ class EPARPipeline:
             "marketing_authorisation_holder",
             "active_substance_list",  # Replaces active_substance
             "atc_code_list",  # Replaces atc_code
-            "therapeutic_area",
+            "therapeutic_area_list",  # Replaces therapeutic_area
             "generic",
             "biosimilar",
             "orphan",

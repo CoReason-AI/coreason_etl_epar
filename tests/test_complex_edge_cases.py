@@ -101,7 +101,7 @@ def test_gold_empty_schema() -> None:
         "atc_code_list": pl.List(pl.String),
         "status_normalized": pl.String,
         "spor_mah_id": pl.String,
-        "therapeutic_area": pl.String,
+        "therapeutic_area_list": pl.List(pl.String),
         "biosimilar": pl.Boolean,
         "generic": pl.Boolean,
         "orphan": pl.Boolean,

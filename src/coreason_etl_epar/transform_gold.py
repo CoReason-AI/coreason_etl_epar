@@ -87,18 +87,16 @@ def create_gold_layer(silver_df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
 
     # Therapeutic Area
     area = (
-        current_df.select(["coreason_id", "therapeutic_area"])
+        current_df.select(["coreason_id", "therapeutic_area_list"])
+        .explode("therapeutic_area_list")
         .drop_nulls()
-        .with_columns(pl.col("therapeutic_area").str.split(";").alias("area_list"))
-        .explode("area_list")
         .select(
             [
                 "coreason_id",
                 pl.lit("THERAPEUTIC_AREA").alias("feature_type"),
-                pl.col("area_list").str.strip_chars().alias("feature_value"),
+                pl.col("therapeutic_area_list").alias("feature_value"),
             ]
         )
-        .filter(pl.col("feature_value").str.len_chars() > 0)
     )
 
     bridge = pl.concat([atc, substance, area])
