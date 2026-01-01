@@ -135,3 +135,32 @@ def test_clean_epar_empty_optional_fields() -> None:
     assert cleaned_null["active_substance"][0] is None
     # Lists should be Null (not empty list)
     assert cleaned_null["active_substance_list"][0] is None
+
+
+def test_clean_epar_atc_dirty_extraction() -> None:
+    """
+    Complex Case: Extract ATC codes embedded in text (e.g., "A01BC01 (tablet)").
+    """
+    data = {
+        "product_number": ["P1", "P2", "P3"],
+        "medicine_name": ["M1", "M2", "M3"],
+        "atc_code": [
+            "A01BC01 (tablet)",  # Valid with noise
+            "B02AA02; C03BB03 (syrup)",  # Mixed clean and dirty
+            "Invalid Code",  # No code
+        ],
+        "authorisation_status": ["Authorised"] * 3,
+    }
+    df = pl.DataFrame(data)
+
+    cleaned = clean_epar_bronze(df)
+
+    # Check Row 1
+    assert cleaned["atc_code_list"][0].to_list() == ["A01BC01"]
+
+    # Check Row 2
+    assert sorted(cleaned["atc_code_list"][1].to_list()) == ["B02AA02", "C03BB03"]
+
+    # Check Row 3 (Should be empty list, not Null list, because input string was not Null)
+    # Wait, my logic filters non-matches. If all filtered, it returns empty list.
+    assert cleaned["atc_code_list"][2].to_list() == []

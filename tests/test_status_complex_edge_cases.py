@@ -47,3 +47,25 @@ def test_status_not_authorised_defect() -> None:
     assert run_status_norm("Not Authorised") == "UNKNOWN"
     # Ensure standard Authorised still works
     assert run_status_norm("Marketing Authorised") == "APPROVED"
+
+
+def test_status_nuances() -> None:
+    """
+    Test new nuanced status logic: LIFTED, SUSPENSION, EXPIRED, AUTHORISATION.
+    """
+    # LIFTED
+    assert run_status_norm("Suspension of the marketing authorisation lifted") == "APPROVED"
+    assert run_status_norm("Suspension lifted") == "APPROVED"
+
+    # SUSPENSION (without LIFTED)
+    assert run_status_norm("Suspension of the marketing authorisation") == "SUSPENDED"
+
+    # EXPIRED
+    assert run_status_norm("Marketing Authorisation Expired") == "WITHDRAWN"
+
+    # AUTHORISATION vs AUTHORISED
+    # "Marketing Authorisation" -> APPROVED (was UNKNOWN previously if checks were strictly AUTHORISED)
+    assert run_status_norm("Marketing Authorisation") == "APPROVED"
+
+    # Negative check still works for Authorisation
+    assert run_status_norm("Not Marketing Authorisation") == "UNKNOWN"

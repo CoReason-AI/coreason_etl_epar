@@ -12,20 +12,28 @@ def get_status_normalization_expr(col_name: str) -> pl.Expr:
     """
     col = pl.col(col_name).str.strip_chars().str.to_uppercase()
     return (
+        # 1. Terminal Negative States
         pl.when(col.str.contains("REFUSED"))
         .then(pl.lit("REJECTED"))
+        .when(col.str.contains("EXPIRED"))
+        .then(pl.lit("WITHDRAWN"))
         .when(col.str.contains("WITHDRAWN"))
         .then(pl.lit("WITHDRAWN"))
-        .when(col.str.contains("SUSPENDED"))
+        # 2. Suspension Logic
+        # "Suspension Lifted" -> APPROVED (Must check before SUSPENDED)
+        .when(col.str.contains("LIFTED"))
+        .then(pl.lit("APPROVED"))
+        .when(col.str.contains("SUSPENDED") | col.str.contains("SUSPENSION"))
         .then(pl.lit("SUSPENDED"))
+        # 3. Qualified Approvals
         .when(col.str.contains("CONDITIONAL"))
         .then(pl.lit("CONDITIONAL_APPROVAL"))
         .when(col.str.contains("EXCEPTIONAL"))
         .then(pl.lit("EXCEPTIONAL_CIRCUMSTANCES"))
-        # FIX: Ensure "AUTHORISED" does not match "NOT AUTHORISED"
-        # We require it contains "AUTHORISED" AND DOES NOT contain "NOT "
-        # We assume "NOT " (with space) or just "NOT" is enough signal for negation.
-        .when(col.str.contains("AUTHORISED") & ~col.str.contains("NOT "))
+        # 4. Standard Approval
+        # Matches "AUTHORISED" or "AUTHORISATION"
+        # Must NOT contain "NOT "
+        .when((col.str.contains("AUTHORISED") | col.str.contains("AUTHORISATION")) & ~col.str.contains("NOT "))
         .then(pl.lit("APPROVED"))
         .otherwise(pl.lit("UNKNOWN"))
     )
@@ -92,10 +100,10 @@ def clean_epar_bronze(df: pl.DataFrame) -> pl.DataFrame:
             .str.replace_all(r",", ";")
             .str.split(";")
             .list.eval(pl.element().str.strip_chars())
-            .list.eval(pl.element().filter(pl.element().str.len_chars() > 0))  # Filter empty strings
-            .list.eval(
-                pl.element().filter(pl.element().str.contains(r"^[A-Z]\d{2}[A-Z]{2}\d{2}$"))
-            )  # Strict L7 Validation
+            # Extract valid ATC code if embedded in text (e.g., "A01BC01 (tablet)")
+            # Use \b boundary to prevent extracting from invalid longer codes (e.g., A01BC012)
+            .list.eval(pl.element().str.extract(r"\b([A-Z]\d{2}[A-Z]{2}\d{2})\b", 1))
+            .list.eval(pl.element().filter(pl.element().is_not_null()))  # Filter non-matches
             .alias("atc_code_list")
         )
     else:
