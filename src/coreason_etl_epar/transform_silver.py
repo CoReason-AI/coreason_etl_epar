@@ -8,7 +8,15 @@ import polars as pl
 def get_status_normalization_expr(col_name: str) -> pl.Expr:
     """
     Returns a Polars expression to normalize Authorisation Status.
-    Strictly prioritized: Refused > Withdrawn > Suspended > Conditional > Exceptional > Approved.
+    Strictly prioritized:
+    1. REFUSED -> REJECTED
+    2. EXPIRED -> WITHDRAWN
+    3. WITHDRAWN -> WITHDRAWN
+    4. LIFTED -> APPROVED (Precedence over SUSPENDED)
+    5. SUSPENDED/SUSPENSION -> SUSPENDED
+    6. CONDITIONAL -> CONDITIONAL_APPROVAL
+    7. EXCEPTIONAL -> EXCEPTIONAL_CIRCUMSTANCES
+    8. AUTHORISED/AUTHORISATION -> APPROVED (if not 'NOT')
     """
     col = pl.col(col_name).str.strip_chars().str.to_uppercase()
     return (
