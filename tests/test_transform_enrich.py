@@ -1,7 +1,7 @@
 import polars as pl
 
 from coreason_etl_epar.transform_enrich import enrich_epar, jaro_winkler
-from coreason_etl_epar.transform_silver import clean_epar_bronze, normalize_status
+from coreason_etl_epar.transform_silver import clean_epar_bronze
 
 
 def test_jaro_winkler() -> None:
@@ -49,14 +49,17 @@ def test_jaro_winkler() -> None:
     assert jaro_winkler("ABC", "XBC") > 0.0  # Match logic
 
 
-def test_normalize_status() -> None:
-    assert normalize_status("Authorised") == "APPROVED"
-    assert normalize_status(" Conditional ") == "CONDITIONAL_APPROVAL"
-    assert normalize_status("Exceptional Circumstances") == "EXCEPTIONAL_CIRCUMSTANCES"
-    assert normalize_status("Refused") == "REJECTED"
-    assert normalize_status("Withdrawn") == "WITHDRAWN"
-    assert normalize_status("Suspended") == "SUSPENDED"
-    assert normalize_status("Unknown Status") == "UNKNOWN"
+def test_status_normalization_in_enrich_context() -> None:
+    # Ensure clean_epar_bronze is used for status normalization validation
+    # This was previously test_normalize_status but now we test the integration
+    data = {
+        "product_number": ["P1"],
+        "medicine_name": ["M1"],
+        "authorisation_status": ["Authorised"],
+    }
+    df = pl.DataFrame(data)
+    cleaned = clean_epar_bronze(df)
+    assert cleaned["status_normalized"][0] == "APPROVED"
 
 
 def test_enrich_epar_logic() -> None:

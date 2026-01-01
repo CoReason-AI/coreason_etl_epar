@@ -1,6 +1,6 @@
 import polars as pl
 
-from coreason_etl_epar.transform_silver import clean_epar_bronze, normalize_status
+from coreason_etl_epar.transform_silver import clean_epar_bronze
 
 
 def test_clean_epar_invisible_chars() -> None:
@@ -60,19 +60,43 @@ def test_clean_epar_normalization() -> None:
     assert cleaned["status_normalized"][0] == "CONDITIONAL_APPROVAL"
 
 
-def test_normalize_status() -> None:
+def test_clean_epar_status_normalization() -> None:
     """
-    Test status normalization logic directly.
+    Test status normalization logic via clean_epar_bronze.
     """
-    assert normalize_status("Authorised") == "APPROVED"
-    assert normalize_status("Refused") == "REJECTED"
-    assert normalize_status("Withdrawn") == "WITHDRAWN"
-    assert normalize_status("Suspended") == "SUSPENDED"
-    assert normalize_status("Exceptional Circumstances") == "EXCEPTIONAL_CIRCUMSTANCES"
-    # Specific qualifiers must not be shadowed by "Authorised"
-    assert normalize_status("Authorised under exceptional circumstances") == "EXCEPTIONAL_CIRCUMSTANCES"
-    assert normalize_status("Conditional Marketing Authorisation") == "CONDITIONAL_APPROVAL"
-    assert normalize_status("Unknown Status") == "UNKNOWN"
+    data = {
+        "product_number": [f"P{i}" for i in range(7)],
+        "medicine_name": ["M"] * 7,
+        "authorisation_status": [
+            "Authorised",
+            "Refused",
+            "Withdrawn",
+            "Suspended",
+            "Exceptional Circumstances",
+            "Authorised under exceptional circumstances",
+            "Conditional Marketing Authorisation",
+        ],
+    }
+    df = pl.DataFrame(data)
+    cleaned = clean_epar_bronze(df)
+    results = cleaned["status_normalized"].to_list()
+
+    expected = [
+        "APPROVED",
+        "REJECTED",
+        "WITHDRAWN",
+        "SUSPENDED",
+        "EXCEPTIONAL_CIRCUMSTANCES",
+        "EXCEPTIONAL_CIRCUMSTANCES",
+        "CONDITIONAL_APPROVAL",
+    ]
+    assert results == expected
+
+    # Test UNKNOWN
+    df_unk = pl.DataFrame(
+        {"product_number": ["P1"], "medicine_name": ["M"], "authorisation_status": ["Unknown Status"]}
+    )
+    assert clean_epar_bronze(df_unk)["status_normalized"][0] == "UNKNOWN"
 
 
 def test_clean_epar_empty_optional_fields() -> None:
@@ -111,3 +135,32 @@ def test_clean_epar_empty_optional_fields() -> None:
     assert cleaned_null["active_substance"][0] is None
     # Lists should be Null (not empty list)
     assert cleaned_null["active_substance_list"][0] is None
+
+
+def test_clean_epar_atc_dirty_extraction() -> None:
+    """
+    Complex Case: Extract ATC codes embedded in text (e.g., "A01BC01 (tablet)").
+    """
+    data = {
+        "product_number": ["P1", "P2", "P3"],
+        "medicine_name": ["M1", "M2", "M3"],
+        "atc_code": [
+            "A01BC01 (tablet)",  # Valid with noise
+            "B02AA02; C03BB03 (syrup)",  # Mixed clean and dirty
+            "Invalid Code",  # No code
+        ],
+        "authorisation_status": ["Authorised"] * 3,
+    }
+    df = pl.DataFrame(data)
+
+    cleaned = clean_epar_bronze(df)
+
+    # Check Row 1
+    assert cleaned["atc_code_list"][0].to_list() == ["A01BC01"]
+
+    # Check Row 2
+    assert sorted(cleaned["atc_code_list"][1].to_list()) == ["B02AA02", "C03BB03"]
+
+    # Check Row 3 (Should be empty list, not Null list, because input string was not Null)
+    # Wait, my logic filters non-matches. If all filtered, it returns empty list.
+    assert cleaned["atc_code_list"][2].to_list() == []

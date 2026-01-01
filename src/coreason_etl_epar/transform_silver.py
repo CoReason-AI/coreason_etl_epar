@@ -5,24 +5,38 @@ from typing import List
 import polars as pl
 
 
-def normalize_status(status: str) -> str:
+def get_status_normalization_expr(col_name: str) -> pl.Expr:
     """
-    Standardizes Authorisation Status to Enum values.
+    Returns a Polars expression to normalize Authorisation Status.
+    Strictly prioritized: Refused > Withdrawn > Suspended > Conditional > Exceptional > Approved.
     """
-    s = status.strip().upper()
-    if "REFUSED" in s:
-        return "REJECTED"
-    if "WITHDRAWN" in s:
-        return "WITHDRAWN"
-    if "SUSPENDED" in s:
-        return "SUSPENDED"
-    if "CONDITIONAL" in s:
-        return "CONDITIONAL_APPROVAL"
-    if "EXCEPTIONAL" in s:
-        return "EXCEPTIONAL_CIRCUMSTANCES"
-    if "AUTHORISED" in s:
-        return "APPROVED"
-    return "UNKNOWN"  # Fallback
+    col = pl.col(col_name).str.strip_chars().str.to_uppercase()
+    return (
+        # 1. Terminal Negative States
+        pl.when(col.str.contains("REFUSED"))
+        .then(pl.lit("REJECTED"))
+        .when(col.str.contains("EXPIRED"))
+        .then(pl.lit("WITHDRAWN"))
+        .when(col.str.contains("WITHDRAWN"))
+        .then(pl.lit("WITHDRAWN"))
+        # 2. Suspension Logic
+        # "Suspension Lifted" -> APPROVED (Must check before SUSPENDED)
+        .when(col.str.contains("LIFTED"))
+        .then(pl.lit("APPROVED"))
+        .when(col.str.contains("SUSPENDED") | col.str.contains("SUSPENSION"))
+        .then(pl.lit("SUSPENDED"))
+        # 3. Qualified Approvals
+        .when(col.str.contains("CONDITIONAL"))
+        .then(pl.lit("CONDITIONAL_APPROVAL"))
+        .when(col.str.contains("EXCEPTIONAL"))
+        .then(pl.lit("EXCEPTIONAL_CIRCUMSTANCES"))
+        # 4. Standard Approval
+        # Matches "AUTHORISED" or "AUTHORISATION"
+        # Must NOT contain "NOT "
+        .when((col.str.contains("AUTHORISED") | col.str.contains("AUTHORISATION")) & ~col.str.contains("NOT "))
+        .then(pl.lit("APPROVED"))
+        .otherwise(pl.lit("UNKNOWN"))
+    )
 
 
 def clean_epar_bronze(df: pl.DataFrame) -> pl.DataFrame:
@@ -86,10 +100,10 @@ def clean_epar_bronze(df: pl.DataFrame) -> pl.DataFrame:
             .str.replace_all(r",", ";")
             .str.split(";")
             .list.eval(pl.element().str.strip_chars())
-            .list.eval(pl.element().filter(pl.element().str.len_chars() > 0))  # Filter empty strings
-            .list.eval(
-                pl.element().filter(pl.element().str.contains(r"^[A-Z]\d{2}[A-Z]{2}\d{2}$"))
-            )  # Strict L7 Validation
+            # Extract valid ATC code if embedded in text (e.g., "A01BC01 (tablet)")
+            # Use \b boundary to prevent extracting from invalid longer codes (e.g., A01BC012)
+            .list.eval(pl.element().str.extract(r"\b([A-Z]\d{2}[A-Z]{2}\d{2})\b", 1))
+            .list.eval(pl.element().filter(pl.element().is_not_null()))  # Filter non-matches
             .alias("atc_code_list")
         )
     else:
@@ -97,11 +111,7 @@ def clean_epar_bronze(df: pl.DataFrame) -> pl.DataFrame:
 
     # 5. Status Standardization
     if "authorisation_status" in df.columns:
-        lf = lf.with_columns(
-            pl.col("authorisation_status")
-            .map_elements(normalize_status, return_dtype=pl.String)
-            .alias("status_normalized")
-        )
+        lf = lf.with_columns(get_status_normalization_expr("authorisation_status").alias("status_normalized"))
     else:
         lf = lf.with_columns(pl.lit(None, dtype=pl.String).alias("status_normalized"))
 
