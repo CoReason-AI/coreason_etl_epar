@@ -24,7 +24,7 @@ EXPECTED_HASH_COLS = [
     "marketing_authorisation_holder",
     "active_substance",
     "atc_code",
-    "therapeutic_area",
+    "therapeutic_area_list",
     "generic",
     "biosimilar",
     "orphan",
@@ -44,6 +44,7 @@ def base_history() -> pl.DataFrame:
         "active_substance": pl.String,
         "atc_code": pl.String,
         "therapeutic_area": pl.String,
+        "therapeutic_area_list": pl.List(pl.String),
         "generic": pl.Boolean,
         "biosimilar": pl.Boolean,
         "orphan": pl.Boolean,
@@ -66,6 +67,7 @@ def base_history() -> pl.DataFrame:
         "active_substance": ["SubA"],
         "atc_code": ["A01"],
         "therapeutic_area": ["AreaA"],
+        "therapeutic_area_list": [["AreaA"]],
         "generic": [False],
         "biosimilar": [False],
         "orphan": [False],
@@ -105,6 +107,7 @@ def test_scd2_detects_business_column_changes(base_history: pl.DataFrame) -> Non
         "active_substance": "SubA",
         "atc_code": "A01",
         "therapeutic_area": "AreaA",
+        "therapeutic_area_list": ["AreaA"],
         "generic": False,
         "biosimilar": False,
         "orphan": False,
@@ -123,6 +126,8 @@ def test_scd2_detects_business_column_changes(base_history: pl.DataFrame) -> Non
             modified_data[col] = not current_val
         elif isinstance(current_val, str):
             modified_data[col] = current_val + "_CHANGED"
+        elif isinstance(current_val, list):
+            modified_data[col] = current_val + ["NEW_ITEM"]
 
         snapshot = pl.DataFrame([modified_data])
 
@@ -140,7 +145,13 @@ def test_scd2_detects_business_column_changes(base_history: pl.DataFrame) -> Non
 
         # Verify value change in result
         expected_val = modified_data[col]
-        actual_val = new_rec[col].item()
+        # Use to_list()[0] to safely get Python object (handling List columns)
+        actual_val = new_rec[col].to_list()[0]
+
+        # If actual_val is a Series (Polars List vs Python List ambiguity), convert
+        if isinstance(actual_val, pl.Series):
+            actual_val = actual_val.to_list()
+
         assert actual_val == expected_val
 
 
@@ -166,6 +177,7 @@ def test_scd2_ignores_irrelevant_changes(base_history: pl.DataFrame) -> None:
         "url": "http://ema.europa.eu/p1",
         # Extra column not in hash list
         "revision_date": datetime(2024, 1, 1),  # Changed from history (implicitly None or old)
+        "therapeutic_area_list": ["AreaA"],  # Must be present to match history schema
     }
 
     snapshot = pl.DataFrame([base_snapshot_data])

@@ -22,6 +22,9 @@ def test_gold_therapeutic_area_dirty_splitting() -> None:
     """
 
     # Setup minimal Silver DF
+    # Note: Logic moved to Silver (clean_epar_bronze), so Silver DF must have pre-cleaned list.
+    # This test now verifies that Gold correctly ingests the list.
+    # We simulate the result of the Silver cleaning here.
     data = {
         "product_number": ["P1", "P2"],  # Required for ID generation
         "coreason_id": ["C1", "C2"],
@@ -33,10 +36,10 @@ def test_gold_therapeutic_area_dirty_splitting() -> None:
         "is_generic": [False, False],
         "is_orphan": [False, False],
         "ema_product_url": ["u1", "u2"],
-        # Dirty Therapeutic Areas
-        "therapeutic_area": [
-            "Cardiology; Oncology",  # Clean
-            "  Neurology ; ; Dermatology; ",  # Dirty: spaces, empty item, trailing sep
+        # Pre-Cleaned Lists
+        "therapeutic_area_list": [
+            ["Cardiology", "Oncology"],  # Clean
+            ["Neurology", "Dermatology"],  # Result of cleaning "  Neurology ; ; Dermatology; "
         ],
         # Required columns for other logic (even if empty lists)
         "atc_code_list": [[], []],
@@ -57,7 +60,7 @@ def test_gold_therapeutic_area_dirty_splitting() -> None:
         schema_overrides={
             "atc_code_list": pl.List(pl.String),
             "active_substance_list": pl.List(pl.String),
-            "therapeutic_area": pl.String,
+            "therapeutic_area_list": pl.List(pl.String),
         },
     )
 

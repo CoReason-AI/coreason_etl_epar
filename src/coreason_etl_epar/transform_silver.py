@@ -85,6 +85,7 @@ def clean_epar_bronze(df: pl.DataFrame) -> pl.DataFrame:
             .str.split("/")
             .list.eval(pl.element().str.strip_chars())
             .list.eval(pl.element().filter(pl.element().str.len_chars() > 0))  # Filter empty strings
+            .list.sort()
             .alias("active_substance_list")
         )
     else:
@@ -104,12 +105,28 @@ def clean_epar_bronze(df: pl.DataFrame) -> pl.DataFrame:
             # Use \b boundary to prevent extracting from invalid longer codes (e.g., A01BC012)
             .list.eval(pl.element().str.extract(r"\b([A-Z]\d{2}[A-Z]{2}\d{2})\b", 1))
             .list.eval(pl.element().filter(pl.element().is_not_null()))  # Filter non-matches
+            .list.sort()
             .alias("atc_code_list")
         )
     else:
         lf = lf.with_columns(pl.lit(None, dtype=pl.List(pl.String)).alias("atc_code_list"))
 
-    # 5. Status Standardization
+    # 5. Therapeutic Area Normalization
+    if "therapeutic_area" in df.columns:
+        lf = lf.with_columns(
+            pl.col("therapeutic_area")
+            .cast(pl.String)
+            .str.replace_all(r",", ";")  # Handle commas as delimiters too
+            .str.split(";")
+            .list.eval(pl.element().str.strip_chars())
+            .list.eval(pl.element().filter(pl.element().str.len_chars() > 0))
+            .list.sort()
+            .alias("therapeutic_area_list")
+        )
+    else:
+        lf = lf.with_columns(pl.lit(None, dtype=pl.List(pl.String)).alias("therapeutic_area_list"))
+
+    # 6. Status Standardization
     if "authorisation_status" in df.columns:
         lf = lf.with_columns(get_status_normalization_expr("authorisation_status").alias("status_normalized"))
     else:

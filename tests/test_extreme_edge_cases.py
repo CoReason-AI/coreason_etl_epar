@@ -107,7 +107,7 @@ def test_gold_creation_empty_silver() -> None:
         "medicine_name": pl.String,
         "active_substance_list": pl.List(pl.String),
         "atc_code_list": pl.List(pl.String),
-        "therapeutic_area": pl.String,
+        "therapeutic_area_list": pl.List(pl.String),
         "valid_from": pl.Datetime,
         "valid_to": pl.Datetime,
         "is_current": pl.Boolean,

@@ -33,7 +33,7 @@ def test_create_gold_layer() -> None:
             "spor_mah_id": ["ORG-1", "ORG-1"],
             "active_substance_list": [["Sub A"], ["Sub A"]],
             "atc_code_list": [["A01"], ["A01"]],
-            "therapeutic_area": ["Cancer", "Cancer"],
+            "therapeutic_area_list": [["Cancer"], ["Cancer"]],
         }
     )
 
@@ -83,7 +83,7 @@ def test_gold_layer_therapeutic_split() -> None:
             "spor_mah_id": ["O1"],
             "active_substance_list": [["S1"]],
             "atc_code_list": [["A1"]],
-            "therapeutic_area": ["Area 1; Area 2"],  # Split check
+            "therapeutic_area_list": [["Area 1", "Area 2"]],  # Split check
         }
     )
 
@@ -118,7 +118,7 @@ def test_gold_fallback_no_current() -> None:
             "spor_mah_id": ["O1", "O1"],
             "active_substance_list": [["S1"], ["S1"]],
             "atc_code_list": [["A1"], ["A1"]],
-            "therapeutic_area": ["A", "A"],
+            "therapeutic_area_list": [["A"], ["A"]],
         }
     )
 
@@ -149,7 +149,7 @@ def test_gold_empty_lists() -> None:
         "spor_mah_id": pl.String,
         "active_substance_list": pl.List(pl.String),
         "atc_code_list": pl.List(pl.String),
-        "therapeutic_area": pl.String,
+        "therapeutic_area_list": pl.List(pl.String),
     }
 
     silver_df = pl.DataFrame(
@@ -168,7 +168,7 @@ def test_gold_empty_lists() -> None:
             "spor_mah_id": ["O1"],
             "active_substance_list": [[]],  # Empty
             "atc_code_list": [[]],  # Empty
-            "therapeutic_area": [None],  # Null
+            "therapeutic_area_list": [[]],  # Empty
         },
         schema=schema,
     )
