@@ -104,9 +104,7 @@ class EPARPipeline:
                 conn_str = f"postgresql://{user}:{password}@{host}:{port}/{dbname}"
 
                 try:
-                    epar_df = pl.read_database(
-                        f"SELECT * FROM {self.dataset_name}.epar_index", connection=conn_str
-                    )
+                    epar_df = pl.read_database(f"SELECT * FROM {self.dataset_name}.epar_index", connection=conn_str)
                 except Exception as e:
                     logger.warning(f"Failed to read epar_index from Postgres: {e}")
                     epar_df = pl.DataFrame()

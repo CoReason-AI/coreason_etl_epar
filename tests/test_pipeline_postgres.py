@@ -1,12 +1,14 @@
+from typing import Dict
 from unittest.mock import MagicMock, patch
 
 import polars as pl
 import pytest
+
 from coreason_etl_epar.pipeline import EPARPipeline
 
 
 @pytest.fixture
-def mock_env_postgres():
+def mock_env_postgres() -> Dict[str, str]:
     return {
         "PGUSER": "user",
         "PGPASSWORD": "password",
@@ -16,7 +18,7 @@ def mock_env_postgres():
     }
 
 
-def test_load_bronze_postgres_success(mock_env_postgres):
+def test_load_bronze_postgres_success(mock_env_postgres: Dict[str, str]) -> None:
     """
     Test successful loading from Postgres when env vars are present.
     """
@@ -32,7 +34,7 @@ def test_load_bronze_postgres_success(mock_env_postgres):
 
             # Mock dlt pipeline to avoid real connection attempts
             with patch("dlt.pipeline") as mock_dlt:
-                 # Ensure sql_client context manager works
+                # Ensure sql_client context manager works
                 mock_dlt.return_value.sql_client.return_value.__enter__.return_value = MagicMock()
 
                 result = pipeline.load_bronze()
@@ -41,16 +43,14 @@ def test_load_bronze_postgres_success(mock_env_postgres):
             assert not result["spor"].is_empty()
 
             # Verify connection string construction
+            # Note: The code now uses quote_plus, but for simple user/pass it remains same.
+            # If we want to test encoding, we should update the fixture, but keeping it simple is fine for now.
             expected_conn = "postgresql://user:password@localhost:5432/mydb"
-            mock_read_db.assert_any_call(
-                "SELECT * FROM bronze_epar.epar_index", connection=expected_conn
-            )
-            mock_read_db.assert_any_call(
-                "SELECT * FROM bronze_epar.spor_organisations", connection=expected_conn
-            )
+            mock_read_db.assert_any_call("SELECT * FROM bronze_epar.epar_index", connection=expected_conn)
+            mock_read_db.assert_any_call("SELECT * FROM bronze_epar.spor_organisations", connection=expected_conn)
 
 
-def test_load_bronze_postgres_missing_env():
+def test_load_bronze_postgres_missing_env() -> None:
     """
     Test missing environment variables for Postgres.
     """
@@ -66,7 +66,7 @@ def test_load_bronze_postgres_missing_env():
         assert result["spor"].is_empty()
 
 
-def test_load_bronze_postgres_connection_failure(mock_env_postgres):
+def test_load_bronze_postgres_connection_failure(mock_env_postgres: Dict[str, str]) -> None:
     """
     Test failure during read_database (e.g. connection refused).
     """
@@ -77,13 +77,13 @@ def test_load_bronze_postgres_connection_failure(mock_env_postgres):
             pipeline = EPARPipeline("dummy", "dummy", destination="postgres")
 
             with patch("dlt.pipeline"):
-                 result = pipeline.load_bronze()
+                result = pipeline.load_bronze()
 
             assert result["epar"].is_empty()
             assert result["spor"].is_empty()
 
 
-def test_load_bronze_unsupported_destination():
+def test_load_bronze_unsupported_destination() -> None:
     """
     Test fallback for unsupported destination.
     """
