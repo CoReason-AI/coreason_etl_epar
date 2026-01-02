@@ -2,6 +2,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 from typing import Dict
+from urllib.parse import quote_plus
 
 import dlt
 import polars as pl
@@ -89,13 +90,44 @@ class EPARPipeline:
                     )
                 except Exception: spor_df = pl.DataFrame()  # noqa: E701
                 # fmt: on
-
-        if self.destination == "duckdb":
             return {"epar": epar_df, "spor": spor_df}
+
+        elif self.destination == "postgres":
+            # Construct connection string from env vars
+            try:
+                user = quote_plus(os.environ["PGUSER"])
+                password = quote_plus(os.environ["PGPASSWORD"])
+                host = os.environ["PGHOST"]
+                port = os.environ["PGPORT"]
+                dbname = os.environ["PGDATABASE"]
+
+                conn_str = f"postgresql://{user}:{password}@{host}:{port}/{dbname}"
+
+                try:
+                    epar_df = pl.read_database(
+                        f"SELECT * FROM {self.dataset_name}.epar_index", connection=conn_str
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to read epar_index from Postgres: {e}")
+                    epar_df = pl.DataFrame()
+
+                try:
+                    spor_df = pl.read_database(
+                        f"SELECT * FROM {self.dataset_name}.spor_organisations", connection=conn_str
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to read spor_organisations from Postgres: {e}")
+                    spor_df = pl.DataFrame()
+
+                return {"epar": epar_df, "spor": spor_df}
+
+            except KeyError as e:
+                logger.error(f"Missing environment variable for Postgres connection: {e}")
+                return {"epar": pl.DataFrame(), "spor": pl.DataFrame()}
+
         else:
-            logger.warning("FALLBACK REACHED")  # pragma: no cover
-            res = {"epar": epar_df, "spor": spor_df}  # pragma: no cover
-            return res  # pragma: no cover
+            logger.warning(f"Unsupported destination for load_bronze: {self.destination}")
+            return {"epar": pl.DataFrame(), "spor": pl.DataFrame()}
 
     def run_transformations(
         self, bronze_epar: pl.DataFrame, bronze_spor: pl.DataFrame, history_path: str = "silver_history.parquet"
