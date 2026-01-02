@@ -8,7 +8,18 @@ import polars as pl
 def get_status_normalization_expr(col_name: str) -> pl.Expr:
     """
     Returns a Polars expression to normalize Authorisation Status.
-    Strictly prioritized: Refused > Withdrawn > Suspended > Conditional > Exceptional > Approved.
+    Strictly prioritized:
+    1. REFUSED -> REJECTED
+    2. EXPIRED -> WITHDRAWN
+    3. WITHDRAWN -> WITHDRAWN
+    4. LIFTED -> APPROVED (Precedence over SUSPENDED)
+    5. SUSPENDED/SUSPENSION -> SUSPENDED
+    6. CONDITIONAL -> CONDITIONAL_APPROVAL
+    7. EXCEPTIONAL -> EXCEPTIONAL_CIRCUMSTANCES
+    8. AUTHORISED/AUTHORISATION -> APPROVED
+       - Must NOT contain "NOT "
+       - Must NOT contain "DE-", "NON-", "PRE-" (False positive prefixes)
+       - Must use Word Boundaries to avoid "Unauthorised"
     """
     col = pl.col(col_name).str.strip_chars().str.to_uppercase()
     return (
@@ -18,6 +29,8 @@ def get_status_normalization_expr(col_name: str) -> pl.Expr:
         .when(col.str.contains("EXPIRED"))
         .then(pl.lit("WITHDRAWN"))
         .when(col.str.contains("WITHDRAWN"))
+        .then(pl.lit("WITHDRAWN"))
+        .when(col.str.contains("NOT RENEWED") | col.str.contains("NON-RENEWAL"))
         .then(pl.lit("WITHDRAWN"))
         # 2. Suspension Logic
         # "Suspension Lifted" -> APPROVED (Must check before SUSPENDED)
@@ -32,8 +45,15 @@ def get_status_normalization_expr(col_name: str) -> pl.Expr:
         .then(pl.lit("EXCEPTIONAL_CIRCUMSTANCES"))
         # 4. Standard Approval
         # Matches "AUTHORISED" or "AUTHORISATION"
-        # Must NOT contain "NOT "
-        .when((col.str.contains("AUTHORISED") | col.str.contains("AUTHORISATION")) & ~col.str.contains("NOT "))
+        # Must NOT contain "NOT ", "DE-", "NON-", "PRE-"
+        # Use Word Boundaries (\b) to avoid Unauthorised
+        .when(
+            (col.str.contains(r"\bAUTHORISED") | col.str.contains(r"\bAUTHORISATION"))
+            & ~col.str.contains("NOT ")
+            & ~col.str.contains("DE-")
+            & ~col.str.contains("NON-")
+            & ~col.str.contains("PRE-")
+        )
         .then(pl.lit("APPROVED"))
         .otherwise(pl.lit("UNKNOWN"))
     )
