@@ -39,8 +39,6 @@ dev = [
     "types-pyyaml>=6.0.12.20250915",
     "tzdata>=2025.3",
     "pytest-xdist>=3.6.1",
-    "dlt>=1.23.0",
-    "polars>=1.39.0",
 ]
 
 [tool.hatch.build.targets.wheel]
