@@ -52,19 +52,25 @@ jobs:
         run: echo "PYTHON_GIL=0" >> $GITHUB_ENV
         shell: bash
 
+      # See https://github.com/ijl/orjson/issues/495
+      # orjson does not support free-threaded Python
       - name: Install dependencies
+        if: matrix.python-version != '3.14t'
         run: uv sync --all-extras --dev
         shell: bash
 
       - name: Run tests
+        if: matrix.python-version != '3.14t'
         run: uv run pytest --cov=src --cov-report=xml
         shell: bash
 
       - name: Build docs
+        if: matrix.python-version != '3.14t'
         run: uv run zensical build
         shell: bash
 
       - name: Upload coverage to Codecov
+        if: matrix.python-version != '3.14t'
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -93,10 +99,12 @@ jobs:
         shell: bash
 
       - name: Install dependencies
+        if: matrix.python-version != '3.14t'
         run: uv sync --all-extras --dev
         shell: bash
 
       - name: Run tests
+        if: matrix.python-version != '3.14t'
         run: uv run pytest --cov=src --cov-report=xml
         shell: bash
 
