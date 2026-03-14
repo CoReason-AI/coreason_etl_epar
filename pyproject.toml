@@ -13,6 +13,7 @@ authors = [
 ]
 dependencies = [
     "loguru>=0.7.2",
+    "pydantic>=2.12.5",
 ]
 license = { file = "LICENSE" }
 classifiers = [
@@ -37,7 +38,9 @@ dev = [
     "mkdocstrings-python",
     "types-pyyaml>=6.0.12.20250915",
     "tzdata>=2025.3",
-    "pytest-xdist>=3.6.1"
+    "pytest-xdist>=3.6.1",
+    "dlt>=1.23.0",
+    "polars>=1.39.0",
 ]
 
 [tool.hatch.build.targets.wheel]
