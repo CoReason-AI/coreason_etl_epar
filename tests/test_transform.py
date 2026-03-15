@@ -1,8 +1,12 @@
+import uuid
+
 import polars as pl
 from polars.testing import assert_frame_equal
 
 from coreason_etl_epar.schemas import RegulatoryStatusEnum
 from coreason_etl_epar.transform import (
+    NAMESPACE_EMA,
+    generate_coreason_id,
     normalize_active_substance,
     normalize_atc_code,
     normalize_base_procedure_id,
@@ -91,6 +95,22 @@ def test_standardize_authorisation_status() -> None:
     assert_frame_equal(result, expected)
 
 
+def test_generate_coreason_id() -> None:
+    df = pl.DataFrame({"product_number": ["EMEA/H/C/001234", "EMEA/H/C/000001", None]})
+
+    expected_id_1 = str(uuid.uuid5(NAMESPACE_EMA, "EMEA/H/C/001234"))
+    expected_id_2 = str(uuid.uuid5(NAMESPACE_EMA, "EMEA/H/C/000001"))
+
+    expected = pl.DataFrame(
+        {
+            "product_number": ["EMEA/H/C/001234", "EMEA/H/C/000001", None],
+            "coreason_id": [expected_id_1, expected_id_2, None],
+        }
+    )
+    result = generate_coreason_id(df)
+    assert_frame_equal(result, expected)
+
+
 def test_normalize_epar_fields() -> None:
     df = pl.DataFrame(
         {
@@ -100,6 +120,9 @@ def test_normalize_epar_fields() -> None:
             "authorisation_status": ["Authorised"],
         }
     )
+
+    expected_coreason_id = str(uuid.uuid5(NAMESPACE_EMA, "EMEA/H/C/001234"))
+
     expected = pl.DataFrame(
         {
             "product_number": ["EMEA/H/C/001234"],
@@ -107,7 +130,12 @@ def test_normalize_epar_fields() -> None:
             "atc_code": [["A01B", "C02D"]],
             "authorisation_status": [RegulatoryStatusEnum.APPROVED.value],
             "base_procedure_id": ["001234"],
+            "coreason_id": [expected_coreason_id],
         }
     )
+
+    # We need to test the returned DataFrame by column as `map_elements` may change ordering
     result = normalize_epar_fields(df)
-    assert_frame_equal(result, expected)
+
+    for col in expected.columns:
+        assert_frame_equal(result.select(col), expected.select(col))

@@ -8,9 +8,33 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_etl_epar
 
+import uuid
+
 import polars as pl
 
 from coreason_etl_epar.schemas import RegulatoryStatusEnum
+
+NAMESPACE_EMA = uuid.uuid5(uuid.NAMESPACE_DNS, "ema.europa.eu")
+
+
+def generate_coreason_id(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame | pl.DataFrame:
+    """
+    AGENT INSTRUCTION: Generate coreason_id using UUID5.
+    Logic: UUID5(NAMESPACE_EMA, source_id). source_id is product_number.
+    """
+
+    # We use a python function mapping or expression with string operations.
+    # The most robust way in Polars is to use map_elements or create a custom python function,
+    # but since uuid5 takes strings, we can use map_elements.
+
+    def _uuid5_mapper(val: str | None) -> str | None:
+        if val is None:
+            return None  # pragma: no cover
+        return str(uuid.uuid5(NAMESPACE_EMA, val))
+
+    return df.with_columns(
+        pl.col("product_number").map_elements(_uuid5_mapper, return_dtype=pl.String).alias("coreason_id")
+    )
 
 
 def normalize_base_procedure_id(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame | pl.DataFrame:
@@ -91,4 +115,5 @@ def normalize_epar_fields(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame | pl.
     df = normalize_base_procedure_id(df)
     df = normalize_active_substance(df)
     df = normalize_atc_code(df)
-    return standardize_authorisation_status(df)
+    df = standardize_authorisation_status(df)
+    return generate_coreason_id(df)
