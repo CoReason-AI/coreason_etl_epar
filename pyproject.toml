@@ -12,8 +12,11 @@ authors = [
     { name = "Akshaya M", email = "akshaya.movvar@coreason.ai" },
 ]
 dependencies = [
+    "dlt>=1.23.0",
     "loguru>=0.7.2",
+    "pandas>=3.0.1",
     "pydantic>=2.12.5",
+    "requests>=2.32.5",
 ]
 license = { file = "LICENSE" }
 classifiers = [
@@ -39,6 +42,14 @@ dev = [
     "types-pyyaml>=6.0.12.20250915",
     "tzdata>=2025.3",
     "pytest-xdist>=3.6.1",
+    "types-openpyxl>=3.1.5.20250919",
+    "types-requests>=2.32.4.20260107",
+    "polars>=1.39.0",
+    "pandas>=3.0.1",
+    "pydantic>=2.12.5",
+    "dlt>=1.23.0",
+    "pandas-stubs>=3.0.0.260204",
+    "openpyxl>=3.1.5",
 ]
 
 [tool.hatch.build.targets.wheel]
