@@ -14,7 +14,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
-from coreason_etl_epar.schemas import EPARSourceRow
+from coreason_etl_epar.schemas import EPARSourceRow, SPOROrganisationRow
 
 
 def test_epar_source_row_happy_path() -> None:
@@ -109,3 +109,26 @@ def test_epar_source_row_fuzz(medicine_name: str, mah: str, substance: str, stat
     )
     assert row.medicine_name == medicine_name
     assert row.marketing_authorisation_holder == mah
+
+
+def test_spor_organisation_row_happy_path() -> None:
+    row = SPOROrganisationRow(org_id="ORG100000000", org_name="PharmaCorp Ltd")
+    assert row.org_id == "ORG100000000"
+    assert row.org_name == "PharmaCorp Ltd"
+
+
+def test_spor_organisation_row_missing_fields() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        SPOROrganisationRow(org_id="ORG100000000")  # type: ignore[call-arg]
+    assert "1 validation error for SPOROrganisationRow\norg_name\n  Field required" in str(exc_info.value)
+
+    with pytest.raises(ValidationError) as exc_info:
+        SPOROrganisationRow(org_name="PharmaCorp Ltd")  # type: ignore[call-arg]
+    assert "1 validation error for SPOROrganisationRow\norg_id\n  Field required" in str(exc_info.value)
+
+
+@given(org_id=st.text(min_size=1), org_name=st.text(min_size=1))  # type: ignore[misc]
+def test_spor_organisation_row_fuzz(org_id: str, org_name: str) -> None:
+    row = SPOROrganisationRow(org_id=org_id, org_name=org_name)
+    assert row.org_id == org_id
+    assert row.org_name == org_name
