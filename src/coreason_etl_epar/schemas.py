@@ -48,3 +48,8 @@ class EPARSourceRow(BaseModel):
         if not v.startswith("EMEA/"):
             raise ValueError("Invalid EMA Product Number format")
         return v
+
+
+class SPOROrganisationRow(BaseModel):
+    org_id: str = Field(min_length=1, description="SPOR Organization ID")
+    org_name: str = Field(min_length=1, description="SPOR Organization Name")
