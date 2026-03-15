@@ -9,12 +9,22 @@
 # Source Code: https://github.com/CoReason-AI/coreason_etl_epar
 
 
+from datetime import datetime
+
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
-from coreason_etl_epar.schemas import EPARSourceRow, SPOROrganisationRow
+from coreason_etl_epar.schemas import (
+    BridgeMedicineFeatures,
+    DimMedicine,
+    EPARSourceRow,
+    FactRegulatoryHistory,
+    FeatureTypeEnum,
+    RegulatoryStatusEnum,
+    SPOROrganisationRow,
+)
 
 
 def test_epar_source_row_happy_path() -> None:
@@ -132,3 +142,115 @@ def test_spor_organisation_row_fuzz(org_id: str, org_name: str) -> None:
     row = SPOROrganisationRow(org_id=org_id, org_name=org_name)
     assert row.org_id == org_id
     assert row.org_name == org_name
+
+
+def test_regulatory_status_enum() -> None:
+    assert RegulatoryStatusEnum.APPROVED == "APPROVED"
+    assert RegulatoryStatusEnum.CONDITIONAL_APPROVAL == "CONDITIONAL_APPROVAL"
+    assert RegulatoryStatusEnum.EXCEPTIONAL_CIRCUMSTANCES == "EXCEPTIONAL_CIRCUMSTANCES"
+    assert RegulatoryStatusEnum.REJECTED == "REJECTED"
+    assert RegulatoryStatusEnum.WITHDRAWN == "WITHDRAWN"
+    assert RegulatoryStatusEnum.SUSPENDED == "SUSPENDED"
+
+
+def test_feature_type_enum() -> None:
+    assert FeatureTypeEnum.ATC_CODE == "ATC_CODE"
+    assert FeatureTypeEnum.SUBSTANCE == "SUBSTANCE"
+    assert FeatureTypeEnum.THERAPEUTIC_AREA == "THERAPEUTIC_AREA"
+
+
+def test_dim_medicine_happy_path() -> None:
+    dim = DimMedicine(
+        coreason_id="123e4567-e89b-12d3-a456-426614174000",
+        medicine_name="SuperDrug",
+        base_procedure_id="001234",
+        brand_name="SuperBrand",
+        is_biosimilar=True,
+        is_generic=False,
+        is_orphan=False,
+        ema_product_url="https://www.ema.europa.eu/en/medicines/human/EPAR/superdrug",
+    )
+    assert dim.coreason_id == "123e4567-e89b-12d3-a456-426614174000"
+    assert dim.medicine_name == "SuperDrug"
+    assert dim.base_procedure_id == "001234"
+    assert dim.brand_name == "SuperBrand"
+    assert dim.is_biosimilar is True
+    assert dim.is_generic is False
+    assert dim.is_orphan is False
+    assert str(dim.ema_product_url) == "https://www.ema.europa.eu/en/medicines/human/EPAR/superdrug"
+
+
+def test_dim_medicine_defaults() -> None:
+    dim = DimMedicine(
+        coreason_id="123e4567-e89b-12d3-a456-426614174000",
+        medicine_name="SuperDrug",
+        base_procedure_id="001234",
+        ema_product_url="https://www.ema.europa.eu/en/medicines/human/EPAR/superdrug",
+    )
+    assert dim.brand_name is None
+    assert dim.is_biosimilar is False
+    assert dim.is_generic is False
+    assert dim.is_orphan is False
+
+
+def test_fact_regulatory_history_happy_path() -> None:
+    dt_from = datetime(2023, 1, 1)
+    dt_to = datetime(2024, 1, 1)
+    fact = FactRegulatoryHistory(
+        history_id="hist-123",
+        coreason_id="123e4567-e89b-12d3-a456-426614174000",
+        status=RegulatoryStatusEnum.APPROVED,
+        valid_from=dt_from,
+        valid_to=dt_to,
+        is_current=False,
+        spor_mah_id="ORG1000",
+    )
+    assert fact.history_id == "hist-123"
+    assert fact.coreason_id == "123e4567-e89b-12d3-a456-426614174000"
+    assert fact.status == RegulatoryStatusEnum.APPROVED
+    assert fact.valid_from == dt_from
+    assert fact.valid_to == dt_to
+    assert fact.is_current is False
+    assert fact.spor_mah_id == "ORG1000"
+
+
+def test_fact_regulatory_history_defaults() -> None:
+    dt_from = datetime(2023, 1, 1)
+    fact = FactRegulatoryHistory(
+        history_id="hist-123",
+        coreason_id="123e4567-e89b-12d3-a456-426614174000",
+        status=RegulatoryStatusEnum.APPROVED,
+        valid_from=dt_from,
+        is_current=True,
+    )
+    assert fact.valid_to is None
+    assert fact.spor_mah_id is None
+
+
+def test_bridge_medicine_features_happy_path() -> None:
+    bridge = BridgeMedicineFeatures(
+        coreason_id="123e4567-e89b-12d3-a456-426614174000",
+        feature_type=FeatureTypeEnum.ATC_CODE,
+        feature_value="A10BA02",
+    )
+    assert bridge.coreason_id == "123e4567-e89b-12d3-a456-426614174000"
+    assert bridge.feature_type == FeatureTypeEnum.ATC_CODE
+    assert bridge.feature_value == "A10BA02"
+
+
+@given(  # type: ignore[misc]
+    coreason_id=st.text(min_size=1),
+    medicine_name=st.text(min_size=1),
+    base_procedure_id=st.text(min_size=1),
+    url=st.from_regex(r"^https://www\.example\.com/[a-z]+$", fullmatch=True),
+)
+def test_dim_medicine_fuzz(coreason_id: str, medicine_name: str, base_procedure_id: str, url: str) -> None:
+    dim = DimMedicine(
+        coreason_id=coreason_id,
+        medicine_name=medicine_name,
+        base_procedure_id=base_procedure_id,
+        ema_product_url=url,
+    )
+    assert dim.coreason_id == coreason_id
+    assert dim.medicine_name == medicine_name
+    assert dim.base_procedure_id == base_procedure_id

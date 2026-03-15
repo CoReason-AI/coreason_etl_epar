@@ -9,6 +9,7 @@
 # Source Code: https://github.com/CoReason-AI/coreason_etl_epar
 
 from datetime import datetime
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, Field, HttpUrl, field_validator
@@ -53,3 +54,65 @@ class EPARSourceRow(BaseModel):
 class SPOROrganisationRow(BaseModel):
     org_id: str = Field(min_length=1, description="SPOR Organization ID")
     org_name: str = Field(min_length=1, description="SPOR Organization Name")
+
+
+class RegulatoryStatusEnum(StrEnum):
+    """
+    AGENT INSTRUCTION: Granular Enum for standardizing EPAR status strings.
+    """
+
+    APPROVED = "APPROVED"
+    CONDITIONAL_APPROVAL = "CONDITIONAL_APPROVAL"
+    EXCEPTIONAL_CIRCUMSTANCES = "EXCEPTIONAL_CIRCUMSTANCES"
+    REJECTED = "REJECTED"
+    WITHDRAWN = "WITHDRAWN"
+    SUSPENDED = "SUSPENDED"
+
+
+class FeatureTypeEnum(StrEnum):
+    """
+    AGENT INSTRUCTION: Enum for bridge table feature types.
+    """
+
+    ATC_CODE = "ATC_CODE"
+    SUBSTANCE = "SUBSTANCE"
+    THERAPEUTIC_AREA = "THERAPEUTIC_AREA"
+
+
+class DimMedicine(BaseModel):
+    """
+    AGENT INSTRUCTION: Immutable Entity Attributes representing the `dim_medicine` table in the Gold Layer.
+    """
+
+    coreason_id: str = Field(description="PK: UUID5(NAMESPACE_EMA, source_id)")
+    medicine_name: str
+    base_procedure_id: str = Field(description="Grouping Key: Extracted from product_number")
+    brand_name: str | None = None
+    is_biosimilar: bool = False
+    is_generic: bool = False
+    is_orphan: bool = False
+    ema_product_url: HttpUrl
+
+
+class FactRegulatoryHistory(BaseModel):
+    """
+    AGENT INSTRUCTION: SCD Type 2 Timeline representing the `fact_regulatory_history` table in the Gold Layer.
+    """
+
+    history_id: str = Field(description="PK")
+    coreason_id: str = Field(description="FK: References dim_medicine.coreason_id")
+    status: RegulatoryStatusEnum = Field(description="Enum")
+    valid_from: datetime = Field(description="Timestamp")
+    valid_to: datetime | None = Field(default=None, description="Timestamp")
+    is_current: bool = Field(description="Boolean")
+    spor_mah_id: str | None = Field(default=None, description="Organization ID from SPOR")
+
+
+class BridgeMedicineFeatures(BaseModel):
+    """
+    AGENT INSTRUCTION: Search Index representing the `bridge_medicine_features` table in the Gold Layer.
+    """
+
+    coreason_id: str = Field(description="FK: References dim_medicine.coreason_id")
+    feature_type: FeatureTypeEnum = Field(description="Enum: 'ATC_CODE', 'SUBSTANCE', 'THERAPEUTIC_AREA'")
+    feature_value: str = Field(description="Normalized String")
