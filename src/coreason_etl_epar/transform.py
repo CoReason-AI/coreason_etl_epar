@@ -82,6 +82,25 @@ def normalize_atc_code(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame | pl.Dat
     )
 
 
+def normalize_therapeutic_area(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame | pl.DataFrame:
+    """
+    AGENT INSTRUCTION: Extract Therapeutic Areas into a searchable array.
+    Logic: therapeutic_area.str.split(by=[";", ","]). Trim whitespace and ignore empty elements.
+    """
+    return df.with_columns(
+        pl.when(pl.col("therapeutic_area").is_not_null())
+        .then(
+            pl.col("therapeutic_area")
+            .str.replace_all(",", ";")
+            .str.split(";")
+            .list.eval(pl.element().str.strip_chars())
+            .list.eval(pl.element().filter(pl.element().str.len_bytes() > 0))
+        )
+        .otherwise(pl.lit(None))
+        .alias("therapeutic_area")
+    )
+
+
 def standardize_authorisation_status(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame | pl.DataFrame:
     """
     AGENT INSTRUCTION: Standardize status.
@@ -116,6 +135,7 @@ def normalize_epar_fields(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame | pl.
     df = normalize_base_procedure_id(df)
     df = normalize_active_substance(df)
     df = normalize_atc_code(df)
+    df = normalize_therapeutic_area(df)
     df = standardize_authorisation_status(df)
     return generate_coreason_id(df)
 
