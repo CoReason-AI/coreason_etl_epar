@@ -9,6 +9,7 @@ from coreason_etl_epar.transform import (
     NAMESPACE_EMA,
     _jaro_winkler_distance,
     apply_scd_type_2,
+    build_dim_medicine,
     enrich_organizations,
     generate_coreason_id,
     normalize_active_substance,
@@ -315,6 +316,62 @@ def test_enrich_organizations() -> None:
 
     assert isinstance(result_df, pl.DataFrame)
     assert_frame_equal(result_df, expected_df)
+
+
+def test_build_dim_medicine() -> None:
+    df = pl.DataFrame(
+        {
+            "coreason_id": ["id1", "id2", "id1"],
+            "medicine_name": ["Med1", "Med2", "Med1"],
+            "base_procedure_id": ["proc1", "proc2", "proc1"],
+            "biosimilar": [True, False, True],
+            "generic": [False, True, False],
+            "orphan": [False, False, False],
+            "url": ["http://url1", "http://url2", "http://url1"],
+        }
+    )
+
+    expected = pl.DataFrame(
+        {
+            "coreason_id": ["id1", "id2"],
+            "medicine_name": ["Med1", "Med2"],
+            "base_procedure_id": ["proc1", "proc2"],
+            "brand_name": [None, None],
+            "is_biosimilar": [True, False],
+            "is_generic": [False, True],
+            "is_orphan": [False, False],
+            "ema_product_url": ["http://url1", "http://url2"],
+        }
+    )
+    # We cast brand_name to pl.String in case it infers as pl.Null
+    expected = expected.with_columns(pl.col("brand_name").cast(pl.String))
+
+    result = build_dim_medicine(df)
+
+    assert isinstance(result, pl.DataFrame)
+    assert_frame_equal(
+        result.sort("coreason_id"),
+        expected.sort("coreason_id"),
+    )
+
+
+def test_build_dim_medicine_lazy() -> None:
+    df = pl.LazyFrame(
+        {
+            "coreason_id": ["id1"],
+            "medicine_name": ["Med1"],
+            "base_procedure_id": ["proc1"],
+            "biosimilar": [True],
+            "generic": [False],
+            "orphan": [False],
+            "url": ["http://url1"],
+        }
+    )
+    result = build_dim_medicine(df)
+    assert isinstance(result, pl.LazyFrame)
+    collected = result.collect()
+    assert len(collected) == 1
+    assert collected["coreason_id"][0] == "id1"
 
 
 def test_enrich_organizations_lazy() -> None:

@@ -277,6 +277,25 @@ def enrich_organizations(
     return enriched if is_lazy else enriched.collect()
 
 
+def build_dim_medicine(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame | pl.DataFrame:
+    """
+    AGENT INSTRUCTION: Transform Silver data into the `dim_medicine` Gold table format.
+    Extract immutable entity attributes and deduplicate by coreason_id.
+    """
+    return df.select(
+        [
+            pl.col("coreason_id"),
+            pl.col("medicine_name"),
+            pl.col("base_procedure_id"),
+            pl.lit(None, dtype=pl.String).alias("brand_name"),
+            pl.col("biosimilar").alias("is_biosimilar"),
+            pl.col("generic").alias("is_generic"),
+            pl.col("orphan").alias("is_orphan"),
+            pl.col("url").alias("ema_product_url"),
+        ]
+    ).unique(subset=["coreason_id"], keep="first")
+
+
 def apply_scd_type_2(
     current_df: pl.LazyFrame | pl.DataFrame,
     new_snapshot: pl.LazyFrame | pl.DataFrame,
