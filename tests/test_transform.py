@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 import polars as pl
 from polars.testing import assert_frame_equal
@@ -6,6 +7,7 @@ from polars.testing import assert_frame_equal
 from coreason_etl_epar.schemas import RegulatoryStatusEnum
 from coreason_etl_epar.transform import (
     NAMESPACE_EMA,
+    apply_scd_type_2,
     generate_coreason_id,
     normalize_active_substance,
     normalize_atc_code,
@@ -139,3 +141,106 @@ def test_normalize_epar_fields() -> None:
 
     for col in expected.columns:
         assert_frame_equal(result.select(col), expected.select(col))
+
+
+def test_apply_scd_type_2() -> None:
+    current_df = pl.DataFrame(
+        {
+            "source_id": ["A", "B", "C"],
+            "col1": ["valA", "valB", "valC"],
+            "col2": [1, 2, 3],
+            "valid_from": [datetime(2023, 1, 1), datetime(2023, 1, 1), datetime(2023, 1, 1)],
+            "valid_to": [None, None, None],
+            "is_current": [True, True, True],
+        }
+    )
+
+    # A: Unchanged
+    # B: Updated (col2 changed)
+    # C: Vanished (not in new snapshot)
+    # D: Inserted (new in snapshot)
+    new_snapshot = pl.DataFrame(
+        {
+            "source_id": ["A", "B", "D"],
+            "col1": ["valA", "valB", "valD"],
+            "col2": [1, 22, 4],
+        }
+    )
+
+    ingestion_ts = datetime(2023, 2, 1)
+
+    result = apply_scd_type_2(
+        current_df=current_df,
+        new_snapshot=new_snapshot,
+        ingestion_ts=ingestion_ts,
+        id_col="source_id",
+        hash_cols=["col1", "col2"],
+    )
+
+    assert isinstance(result, pl.DataFrame)
+
+    # We expect 5 rows:
+    # 1. A unchanged (is_current=True)
+    # 2. B old (is_current=False, valid_to=ingestion_ts)
+    # 3. B new (is_current=True, valid_from=ingestion_ts)
+    # 4. C vanished (is_current=False, valid_to=ingestion_ts)
+    # 5. D inserted (is_current=True, valid_from=ingestion_ts)
+
+    # Check A
+    row_a = result.filter(pl.col("source_id") == "A")
+    assert len(row_a) == 1
+    assert row_a["is_current"][0]
+    assert row_a["valid_to"][0] is None
+
+    # Check B
+    row_b = result.filter(pl.col("source_id") == "B").sort("valid_from")
+    assert len(row_b) == 2
+    assert not row_b["is_current"][0]
+    assert row_b["valid_to"][0] == ingestion_ts
+    assert row_b["is_current"][1]
+    assert row_b["valid_from"][1] == ingestion_ts
+    assert row_b["col2"][1] == 22
+
+    # Check C
+    row_c = result.filter(pl.col("source_id") == "C")
+    assert len(row_c) == 1
+    assert not row_c["is_current"][0]
+    assert row_c["valid_to"][0] == ingestion_ts
+
+    # Check D
+    row_d = result.filter(pl.col("source_id") == "D")
+    assert len(row_d) == 1
+    assert row_d["is_current"][0]
+    assert row_d["valid_from"][0] == ingestion_ts
+    assert row_d["col2"][0] == 4
+
+
+def test_apply_scd_type_2_lazy() -> None:
+    current_df = pl.LazyFrame(
+        {
+            "source_id": ["A"],
+            "val": ["old"],
+            "valid_from": [datetime(2023, 1, 1)],
+            "valid_to": [None],
+            "is_current": [True],
+        }
+    )
+
+    new_snapshot = pl.LazyFrame(
+        {
+            "source_id": ["A"],
+            "val": ["new"],
+        }
+    )
+
+    result = apply_scd_type_2(
+        current_df=current_df,
+        new_snapshot=new_snapshot,
+        ingestion_ts=datetime(2023, 2, 1),
+        id_col="source_id",
+        hash_cols=["val"],
+    )
+
+    assert isinstance(result, pl.LazyFrame)
+    df = result.collect()
+    assert len(df) == 2
