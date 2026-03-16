@@ -235,7 +235,8 @@ def enrich_organizations(
 
     # Cross join unique MAHs with all SPOR organizations
     cross_joined = unique_mahs.join(
-        spor.select(pl.col("org_id"), pl.col("org_name").alias("spor_name")).drop_nulls(), how="cross"  # type: ignore[arg-type]
+        spor.select(pl.col("org_id"), pl.col("org_name").alias("spor_name")).drop_nulls(),
+        how="cross",
     )
 
     # Compute jaro winkler distance in python via map_batches for performance
@@ -267,14 +268,14 @@ def enrich_organizations(
 
     # Now join back to the original EPAR frame
     enriched = epar.join(
-        best_matches.select(  # type: ignore[arg-type]
+        best_matches.select(
             [pl.col("mah_name").alias("marketing_authorisation_holder"), pl.col("org_id").alias("spor_mah_id")]
         ),
         on="marketing_authorisation_holder",
         how="left",
     )
 
-    return enriched if is_lazy else enriched.collect()  # type: ignore[union-attr]
+    return enriched if is_lazy else enriched.collect()
 
 
 def build_dim_medicine(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame | pl.DataFrame:
@@ -317,7 +318,7 @@ def build_fact_regulatory_history(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFra
         return pl.Series("history_id", ids, dtype=pl.String)
 
     is_lazy = isinstance(df, pl.LazyFrame)
-    d: pl.LazyFrame = df.lazy() if not is_lazy else df  # type: ignore[assignment]
+    d: pl.LazyFrame = df.lazy() if not is_lazy else df
 
     # We need: history_id, coreason_id, status, valid_from, valid_to, is_current, spor_mah_id
     # Select existing columns and rename to match Gold schema

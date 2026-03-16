@@ -100,7 +100,7 @@ def test_epar_source_row_invalid_product_number() -> None:
     assert "Invalid EMA Product Number format" in str(exc_info.value)
 
 
-@given(
+@given(  # type: ignore[misc]
     medicine_name=st.text(min_size=1),
     mah=st.text(min_size=1),
     substance=st.text(min_size=1),
@@ -137,7 +137,7 @@ def test_spor_organisation_row_missing_fields() -> None:
     assert "1 validation error for SPOROrganisationRow\norg_id\n  Field required" in str(exc_info.value)
 
 
-@given(org_id=st.text(min_size=1), org_name=st.text(min_size=1))
+@given(org_id=st.text(min_size=1), org_name=st.text(min_size=1))  # type: ignore[misc]
 def test_spor_organisation_row_fuzz(org_id: str, org_name: str) -> None:
     row = SPOROrganisationRow(org_id=org_id, org_name=org_name)
     assert row.org_id == org_id
@@ -238,7 +238,7 @@ def test_bridge_medicine_features_happy_path() -> None:
     assert bridge.feature_value == "A10BA02"
 
 
-@given(
+@given(  # type: ignore[misc]
     coreason_id=st.text(min_size=1),
     medicine_name=st.text(min_size=1),
     base_procedure_id=st.text(min_size=1),

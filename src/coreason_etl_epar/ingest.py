@@ -24,7 +24,7 @@ from coreason_etl_epar.schemas import EPARSourceRow, SPOROrganisationRow
 from coreason_etl_epar.utils.logger import logger
 
 
-@dlt.resource(name="epar_index")
+@dlt.resource(name="epar_index")  # type: ignore[misc]
 def get_epar_index_resource(url: str) -> Generator[dict[str, Any]]:
     """
     Ingests the EPAR Excel index.
@@ -106,7 +106,7 @@ def get_epar_index_resource(url: str) -> Generator[dict[str, Any]]:
             yield cast("dict[str, Any]", dlt.mark.with_table_name(error_details, "epar_index_quarantine"))
 
 
-@dlt.resource(name="spor_organisations_master")
+@dlt.resource(name="spor_organisations_master")  # type: ignore[misc]
 def get_spor_organisations_resource(url: str) -> Generator[dict[str, Any]]:
     """
     Ingests the SPOR OMS Bulk Export.
