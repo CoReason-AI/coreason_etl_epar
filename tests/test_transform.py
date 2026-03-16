@@ -7,7 +7,9 @@ from polars.testing import assert_frame_equal
 from coreason_etl_epar.schemas import RegulatoryStatusEnum
 from coreason_etl_epar.transform import (
     NAMESPACE_EMA,
+    _jaro_winkler_distance,
     apply_scd_type_2,
+    enrich_organizations,
     generate_coreason_id,
     normalize_active_substance,
     normalize_atc_code,
@@ -213,6 +215,105 @@ def test_apply_scd_type_2() -> None:
     assert row_d["is_current"][0]
     assert row_d["valid_from"][0] == ingestion_ts
     assert row_d["col2"][0] == 4
+
+
+def test_jaro_winkler_distance() -> None:
+    # Exact match
+    assert _jaro_winkler_distance("hello", "hello") == 1.0
+
+    # No match
+    assert _jaro_winkler_distance("abc", "xyz") == 0.0
+
+    # Empty string
+    assert _jaro_winkler_distance("", "a") == 0.0
+    assert _jaro_winkler_distance("a", "") == 0.0
+    assert _jaro_winkler_distance("", "") == 1.0
+
+    # Fuzzy match tests (expected > 0.90 but < 1.0)
+    # E.g. minor typos
+    score1 = _jaro_winkler_distance("mcdonalds", "macdonalds")
+    assert 0.90 < score1 < 1.0
+
+    score2 = _jaro_winkler_distance("pfizer inc", "pfizer inc.")
+    assert 0.90 < score2 < 1.0
+
+    score3 = _jaro_winkler_distance("bayer", "bayer ag")
+    assert 0.90 < score3 < 1.0
+
+    # Low match (expected <= 0.90)
+    score4 = _jaro_winkler_distance("novartis", "pfizer")
+    assert score4 <= 0.90
+
+
+def test_enrich_organizations() -> None:
+    epar_df = pl.DataFrame(
+        {
+            "product_number": ["1", "2", "3", "4", "5"],
+            "marketing_authorisation_holder": [
+                "Pfizer Inc.",  # Exact match except case
+                "Bayer AG",  # Exact match
+                "Novartiss",  # Typo match (should be > 0.90 fuzzy match)
+                "Some Random Company",  # No match
+                None,  # Null check
+            ],
+        }
+    )
+
+    spor_df = pl.DataFrame(
+        {
+            "org_id": ["ORG01", "ORG02", "ORG03", "ORG04"],
+            "org_name": [
+                "pfizer inc.",
+                "Bayer AG",
+                "Novartis",
+                None,  # Null org name check
+            ],
+        }
+    )
+
+    expected_df = pl.DataFrame(
+        {
+            "product_number": ["1", "2", "3", "4", "5"],
+            "marketing_authorisation_holder": [
+                "Pfizer Inc.",
+                "Bayer AG",
+                "Novartiss",
+                "Some Random Company",
+                None,
+            ],
+            "spor_mah_id": [
+                "ORG01",  # pfizer inc.
+                "ORG02",  # Bayer AG
+                "ORG03",  # Novartis
+                None,
+                None,
+            ],
+        }
+    )
+
+    result_df = enrich_organizations(epar_df, spor_df, threshold=0.90)
+
+    assert isinstance(result_df, pl.DataFrame)
+    assert_frame_equal(result_df, expected_df)
+
+
+def test_enrich_organizations_lazy() -> None:
+    epar_df = pl.LazyFrame(
+        {
+            "product_number": ["1"],
+            "marketing_authorisation_holder": ["Pfizer Inc."],
+        }
+    )
+    spor_df = pl.LazyFrame(
+        {
+            "org_id": ["ORG01"],
+            "org_name": ["pfizer inc."],
+        }
+    )
+
+    result_df = enrich_organizations(epar_df, spor_df, threshold=0.90)
+    assert isinstance(result_df, pl.LazyFrame)
+    assert result_df.collect()["spor_mah_id"][0] == "ORG01"
 
 
 def test_apply_scd_type_2_lazy() -> None:
