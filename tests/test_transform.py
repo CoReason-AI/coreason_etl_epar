@@ -15,6 +15,7 @@ from coreason_etl_epar.transform import (
     normalize_atc_code,
     normalize_base_procedure_id,
     normalize_epar_fields,
+    normalize_therapeutic_area,
     standardize_authorisation_status,
 )
 
@@ -63,6 +64,23 @@ def test_normalize_atc_code() -> None:
         }
     )
     result = normalize_atc_code(df)
+    assert_frame_equal(result, expected)
+
+
+def test_normalize_therapeutic_area() -> None:
+    df = pl.DataFrame({"therapeutic_area": ["Area 1; Area 2", "Area 3,Area 4", "   ", None, "Area 1; ; Area 2"]})
+    expected = pl.DataFrame(
+        {
+            "therapeutic_area": [
+                ["Area 1", "Area 2"],
+                ["Area 3", "Area 4"],
+                [],
+                None,
+                ["Area 1", "Area 2"],
+            ]
+        }
+    )
+    result = normalize_therapeutic_area(df)
     assert_frame_equal(result, expected)
 
 
@@ -121,6 +139,7 @@ def test_normalize_epar_fields() -> None:
             "product_number": ["EMEA/H/C/001234"],
             "active_substance": ["substance1 / substance2"],
             "atc_code": ["A01B; C02D"],
+            "therapeutic_area": ["Area 1; Area 2"],
             "authorisation_status": ["Authorised"],
         }
     )
@@ -132,6 +151,7 @@ def test_normalize_epar_fields() -> None:
             "product_number": ["EMEA/H/C/001234"],
             "active_substance": [["substance1", "substance2"]],
             "atc_code": [["A01B", "C02D"]],
+            "therapeutic_area": [["Area 1", "Area 2"]],
             "authorisation_status": [RegulatoryStatusEnum.APPROVED.value],
             "base_procedure_id": ["001234"],
             "coreason_id": [expected_coreason_id],
