@@ -120,6 +120,143 @@ def normalize_epar_fields(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame | pl.
     return generate_coreason_id(df)
 
 
+def _jaro_winkler_distance(s1: str, s2: str) -> float:
+    """
+    AGENT INSTRUCTION: Pure Python implementation of Jaro-Winkler distance to avoid external dependencies.
+    """
+    if s1 == s2:
+        return 1.0
+
+    len1 = len(s1)
+    len2 = len(s2)
+
+    if len1 == 0 or len2 == 0:
+        return 0.0
+
+    match_bound = max(0, max(len1, len2) // 2 - 1)
+    matches = 0
+    s1_matches = [False] * len1
+    s2_matches = [False] * len2
+
+    for i in range(len1):
+        start = max(0, i - match_bound)
+        end = min(i + match_bound + 1, len2)
+        for j in range(start, end):
+            if s2_matches[j]:
+                continue
+            if s1[i] != s2[j]:
+                continue
+            s1_matches[i] = True
+            s2_matches[j] = True
+            matches += 1
+            break
+
+    if matches == 0:
+        return 0.0
+
+    transpositions = 0
+    k = 0
+    for i in range(len1):
+        if not s1_matches[i]:
+            continue
+        while not s2_matches[k]:
+            k += 1
+        if s1[i] != s2[k]:
+            transpositions += 1
+        k += 1
+
+    transpositions //= 2
+
+    m = float(matches)
+    jaro = (m / len1 + m / len2 + (m - transpositions) / m) / 3.0
+
+    prefix = 0
+    for i in range(min(len1, len2)):
+        if s1[i] == s2[i]:
+            prefix += 1
+            if prefix == 4:
+                break
+        else:
+            break
+
+    return jaro + prefix * 0.1 * (1.0 - jaro)
+
+
+def enrich_organizations(
+    epar_df: pl.LazyFrame | pl.DataFrame,
+    spor_df: pl.LazyFrame | pl.DataFrame,
+    threshold: float = 0.90,
+) -> pl.LazyFrame | pl.DataFrame:
+    """
+    AGENT INSTRUCTION: Organization Enrichment (Offline Join).
+    Logic: Silver_EPAR LEFT JOIN Silver_SPOR_Orgs ON fuzzy_match(mah_name, org_name).
+    Threshold: Jaro-Winkler distance > 0.90.
+    """
+    is_lazy = isinstance(epar_df, pl.LazyFrame)
+
+    epar = epar_df.lazy() if not is_lazy else epar_df
+    spor = spor_df.lazy() if not isinstance(spor_df, pl.LazyFrame) else spor_df
+
+    # To maintain lazy evaluation and streaming compatibility, we avoid Python loops inside `map_elements`
+    # over the entire SPOR list. Since Polars does not have native Jaro-Winkler in `pl.Expr.str`,
+    # we implement the join lazily.
+    # We will do a cross join but filter heavily to keep performance acceptable,
+    # or since we are required to do "fuzzy_match" using python, we map over a tuple of arrays if needed.
+    # However, standard practice without Polars native string metric is a cross join (or mapped cross join)
+    # followed by python computation. To prevent exploding memory, we could use `.map_batches`.
+
+    def _fuzzy_match_batch(s: pl.Series) -> pl.Series:
+        pass  # pragma: no cover
+
+    # Actually, a full cross-join is bad for memory. Let's do a cross-join on unique MAHs.
+
+    # Extract unique MAHs from EPAR lazily
+    unique_mahs = epar.select(pl.col("marketing_authorisation_holder").alias("mah_name")).unique().drop_nulls()
+
+    # Cross join unique MAHs with all SPOR organizations
+    cross_joined = unique_mahs.join(
+        spor.select(pl.col("org_id"), pl.col("org_name").alias("spor_name")).drop_nulls(), how="cross"
+    )
+
+    # Compute jaro winkler distance in python via map_batches for performance
+    def _compute_jaro_batch(s: pl.Series) -> pl.Series:
+        # s is a Series of Structs
+        scores = []
+        for row in s:
+            m = row["mah_name"]
+            spor_n = row["spor_name"]
+            if m is None or spor_n is None:
+                scores.append(0.0)  # pragma: no cover
+            else:
+                scores.append(_jaro_winkler_distance(m.lower(), spor_n.lower()))
+
+        return pl.Series("score", scores, dtype=pl.Float64)
+
+    # Apply batch computation
+    scored = cross_joined.with_columns(
+        pl.struct(["mah_name", "spor_name"]).map_batches(_compute_jaro_batch, return_dtype=pl.Float64).alias("score")
+    )
+
+    # Filter by threshold and find the best match
+    filtered = scored.filter(pl.col("score") > threshold)
+
+    # Sort to get the highest score first, then distinct by mah_name
+    best_matches = filtered.sort(["mah_name", "score"], descending=[False, True]).unique(
+        subset=["mah_name"], keep="first"
+    )
+
+    # Now join back to the original EPAR frame
+    enriched = epar.join(
+        best_matches.select(
+            [pl.col("mah_name").alias("marketing_authorisation_holder"), pl.col("org_id").alias("spor_mah_id")]
+        ),
+        on="marketing_authorisation_holder",
+        how="left",
+    )
+
+    return enriched if is_lazy else enriched.collect()
+
+
 def apply_scd_type_2(
     current_df: pl.LazyFrame | pl.DataFrame,
     new_snapshot: pl.LazyFrame | pl.DataFrame,
