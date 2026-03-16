@@ -226,7 +226,7 @@ def enrich_organizations(
     # followed by python computation. To prevent exploding memory, we could use `.map_batches`.
 
     def _fuzzy_match_batch(s: pl.Series) -> pl.Series:
-        pass  # pragma: no cover
+        return s  # pragma: no cover
 
     # Actually, a full cross-join is bad for memory. Let's do a cross-join on unique MAHs.
 
@@ -235,7 +235,8 @@ def enrich_organizations(
 
     # Cross join unique MAHs with all SPOR organizations
     cross_joined = unique_mahs.join(
-        spor.select(pl.col("org_id"), pl.col("org_name").alias("spor_name")).drop_nulls(), how="cross"
+        spor.select(pl.col("org_id"), pl.col("org_name").alias("spor_name")).drop_nulls(),
+        how="cross",
     )
 
     # Compute jaro winkler distance in python via map_batches for performance
@@ -294,6 +295,70 @@ def build_dim_medicine(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame | pl.Dat
             pl.col("url").alias("ema_product_url"),
         ]
     ).unique(subset=["coreason_id"], keep="first")
+
+
+def build_fact_regulatory_history(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame | pl.DataFrame:
+    """
+    AGENT INSTRUCTION: Transform Silver history data into the `fact_regulatory_history` Gold table format.
+    """
+
+    def _generate_history_id(s: pl.Series) -> pl.Series:
+        # Generate a deterministic history ID based on coreason_id and valid_from
+        ids: list[str | None] = []
+        for row in s:
+            c_id = row["coreason_id"]
+            v_from = row["valid_from"]
+            if c_id is None or v_from is None:
+                ids.append(None)  # pragma: no cover
+            else:
+                # v_from is datetime, format it deterministically
+                v_str = v_from.isoformat()
+                combo = f"{c_id}|{v_str}"
+                ids.append(str(uuid.uuid5(NAMESPACE_EMA, combo)))
+        return pl.Series("history_id", ids, dtype=pl.String)
+
+    is_lazy = isinstance(df, pl.LazyFrame)
+    d: pl.LazyFrame = df.lazy() if not is_lazy else df
+
+    # We need: history_id, coreason_id, status, valid_from, valid_to, is_current, spor_mah_id
+    # Select existing columns and rename to match Gold schema
+    select_cols = [
+        pl.col("coreason_id"),
+        pl.col("authorisation_status").alias("status"),
+        pl.col("valid_from"),
+        pl.col("valid_to"),
+        pl.col("is_current"),
+    ]
+
+    # Handle spor_mah_id which might not exist if enrichment wasn't done or match wasn't found
+    if "spor_mah_id" in d.collect_schema().names():
+        select_cols.append(pl.col("spor_mah_id"))
+    else:
+        select_cols.append(pl.lit(None, dtype=pl.String).alias("spor_mah_id"))
+
+    d = d.select(select_cols)
+
+    # Generate history_id
+    d = d.with_columns(
+        pl.struct(["coreason_id", "valid_from"])
+        .map_batches(_generate_history_id, return_dtype=pl.String)
+        .alias("history_id")
+    )
+
+    # Reorder columns to match schema
+    d = d.select(
+        [
+            pl.col("history_id"),
+            pl.col("coreason_id"),
+            pl.col("status"),
+            pl.col("valid_from"),
+            pl.col("valid_to"),
+            pl.col("is_current"),
+            pl.col("spor_mah_id"),
+        ]
+    )
+
+    return d if is_lazy else d.collect()
 
 
 def apply_scd_type_2(

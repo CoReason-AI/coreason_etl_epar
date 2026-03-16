@@ -10,6 +10,7 @@ from coreason_etl_epar.transform import (
     _jaro_winkler_distance,
     apply_scd_type_2,
     build_dim_medicine,
+    build_fact_regulatory_history,
     enrich_organizations,
     generate_coreason_id,
     normalize_active_substance,
@@ -372,6 +373,60 @@ def test_build_dim_medicine_lazy() -> None:
     collected = result.collect()
     assert len(collected) == 1
     assert collected["coreason_id"][0] == "id1"
+
+
+def test_build_fact_regulatory_history() -> None:
+    data = {
+        "coreason_id": ["uuid1", "uuid2"],
+        "authorisation_status": ["APPROVED", "REJECTED"],
+        "valid_from": [datetime(2020, 1, 1), datetime(2021, 1, 1)],
+        "valid_to": [None, datetime(2022, 1, 1)],
+        "is_current": [True, False],
+        "spor_mah_id": ["spor1", "spor2"],
+    }
+    df = pl.DataFrame(data)
+    result = build_fact_regulatory_history(df)
+
+    assert isinstance(result, pl.DataFrame)
+    assert len(result) == 2
+    assert "history_id" in result.columns
+    assert "status" in result.columns
+    assert result.select("status").to_series().to_list() == ["APPROVED", "REJECTED"]
+    assert result.select("history_id").to_series().to_list()[0] is not None
+
+
+def test_build_fact_regulatory_history_no_spor() -> None:
+    data_no_spor = {
+        "coreason_id": ["uuid3"],
+        "authorisation_status": ["WITHDRAWN"],
+        "valid_from": [datetime(2023, 1, 1)],
+        "valid_to": [None],
+        "is_current": [True],
+    }
+    df_no_spor = pl.DataFrame(data_no_spor)
+    result_no_spor = build_fact_regulatory_history(df_no_spor)
+
+    assert isinstance(result_no_spor, pl.DataFrame)
+    assert "spor_mah_id" in result_no_spor.columns
+    assert result_no_spor.select("spor_mah_id").to_series().to_list()[0] is None
+
+
+def test_build_fact_regulatory_history_lazy() -> None:
+    data = {
+        "coreason_id": ["uuid1"],
+        "authorisation_status": ["APPROVED"],
+        "valid_from": [datetime(2020, 1, 1)],
+        "valid_to": [None],
+        "is_current": [True],
+        "spor_mah_id": ["spor1"],
+    }
+    df = pl.LazyFrame(data)
+    result = build_fact_regulatory_history(df)
+
+    assert isinstance(result, pl.LazyFrame)
+    collected = result.collect()
+    assert len(collected) == 1
+    assert collected["coreason_id"][0] == "uuid1"
 
 
 def test_enrich_organizations_lazy() -> None:

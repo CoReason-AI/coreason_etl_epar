@@ -17,7 +17,7 @@ from typing import Any, cast
 
 import dlt
 import pandas as pd
-import requests  # type: ignore[import-untyped]
+import requests
 from pydantic import ValidationError
 
 from coreason_etl_epar.schemas import EPARSourceRow, SPOROrganisationRow
