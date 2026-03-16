@@ -13,7 +13,7 @@ from datetime import datetime
 
 import polars as pl
 
-from coreason_etl_epar.schemas import RegulatoryStatusEnum
+from coreason_etl_epar.schemas import FeatureTypeEnum, RegulatoryStatusEnum
 
 NAMESPACE_EMA = uuid.uuid5(uuid.NAMESPACE_DNS, "ema.europa.eu")
 
@@ -234,8 +234,12 @@ def enrich_organizations(
     unique_mahs = epar.select(pl.col("marketing_authorisation_holder").alias("mah_name")).unique().drop_nulls()
 
     # Cross join unique MAHs with all SPOR organizations
-    cross_joined = unique_mahs.join(
-        spor.select(pl.col("org_id"), pl.col("org_name").alias("spor_name")).drop_nulls(),
+    spor_select = spor.select(pl.col("org_id"), pl.col("org_name").alias("spor_name")).drop_nulls()
+    spor_select_lf = spor_select if isinstance(spor_select, pl.LazyFrame) else pl.LazyFrame(spor_select)
+    unique_mahs_lf = unique_mahs if isinstance(unique_mahs, pl.LazyFrame) else pl.LazyFrame(unique_mahs)
+
+    cross_joined = unique_mahs_lf.join(
+        spor_select_lf,
         how="cross",
     )
 
@@ -267,10 +271,19 @@ def enrich_organizations(
     )
 
     # Now join back to the original EPAR frame
-    enriched = epar.join(
-        best_matches.select(
-            [pl.col("mah_name").alias("marketing_authorisation_holder"), pl.col("org_id").alias("spor_mah_id")]
-        ),
+    best_matches_selected = best_matches.select(
+        [pl.col("mah_name").alias("marketing_authorisation_holder"), pl.col("org_id").alias("spor_mah_id")]
+    )
+    # Re-cast to correct types for mypy before join
+    epar_lf = epar if isinstance(epar, pl.LazyFrame) else pl.LazyFrame(epar)
+    best_matches_selected_lf = (
+        best_matches_selected
+        if isinstance(best_matches_selected, pl.LazyFrame)
+        else pl.LazyFrame(best_matches_selected)
+    )
+
+    enriched = epar_lf.join(
+        best_matches_selected_lf,
         on="marketing_authorisation_holder",
         how="left",
     )
@@ -318,7 +331,7 @@ def build_fact_regulatory_history(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFra
         return pl.Series("history_id", ids, dtype=pl.String)
 
     is_lazy = isinstance(df, pl.LazyFrame)
-    d: pl.LazyFrame = df.lazy() if not is_lazy else df
+    d = df.lazy() if not is_lazy else df
 
     # We need: history_id, coreason_id, status, valid_from, valid_to, is_current, spor_mah_id
     # Select existing columns and rename to match Gold schema
@@ -473,5 +486,78 @@ def apply_scd_type_2(
         ],
         how="vertical_relaxed",
     )
+
+    return result if is_lazy else result.collect()
+
+
+def build_bridge_medicine_features(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame | pl.DataFrame:
+    """
+    AGENT INSTRUCTION: Transform Silver data into the `bridge_medicine_features` Gold table format.
+    Un-nest array columns (active_substance, atc_code, therapeutic_area) and melt into EAV format.
+    """
+    is_lazy = isinstance(df, pl.LazyFrame)
+    d: pl.LazyFrame = df.lazy() if not is_lazy else df
+
+    # Check available columns to ensure they exist before trying to process them
+    schema_cols = d.collect_schema().names()
+
+    parts = []
+
+    if "active_substance" in schema_cols:
+        parts.append(
+            d.select(
+                [
+                    pl.col("coreason_id"),
+                    pl.lit(FeatureTypeEnum.SUBSTANCE.value).alias("feature_type"),
+                    pl.col("active_substance").alias("feature_value"),
+                ]
+            )
+            .explode("feature_value")
+            .drop_nulls(subset=["feature_value"])
+        )
+
+    if "atc_code" in schema_cols:
+        parts.append(
+            d.select(
+                [
+                    pl.col("coreason_id"),
+                    pl.lit(FeatureTypeEnum.ATC_CODE.value).alias("feature_type"),
+                    pl.col("atc_code").alias("feature_value"),
+                ]
+            )
+            .explode("feature_value")
+            .drop_nulls(subset=["feature_value"])
+        )
+
+    if "therapeutic_area" in schema_cols:
+        parts.append(
+            d.select(
+                [
+                    pl.col("coreason_id"),
+                    pl.lit(FeatureTypeEnum.THERAPEUTIC_AREA.value).alias("feature_type"),
+                    pl.col("therapeutic_area").alias("feature_value"),
+                ]
+            )
+            .explode("feature_value")
+            .drop_nulls(subset=["feature_value"])
+        )
+
+    if not parts:
+        # If no relevant columns exist, return an empty frame with correct schema
+        empty_df = pl.LazyFrame(
+            schema={
+                "coreason_id": pl.String,
+                "feature_type": pl.String,
+                "feature_value": pl.String,
+            }
+        )
+        return empty_df if is_lazy else empty_df.collect()
+
+    # Concatenate all parts
+    lazy_parts = [p if isinstance(p, pl.LazyFrame) else pl.LazyFrame(p) for p in parts]
+    result = pl.concat(lazy_parts, how="vertical_relaxed")
+
+    # Deduplicate in case there are identical features
+    result = result.unique(subset=["coreason_id", "feature_type", "feature_value"])
 
     return result if is_lazy else result.collect()
