@@ -371,7 +371,7 @@ def build_fact_regulatory_history(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFra
         ]
     )
 
-    return d if is_lazy else d.collect()
+    return d if is_lazy else d.collect() if isinstance(d, pl.LazyFrame) else d
 
 
 def apply_scd_type_2(
@@ -475,7 +475,7 @@ def apply_scd_type_2(
     ).select(curr_cols)
 
     # Combine everything
-    result: pl.LazyFrame = pl.concat(
+    result = pl.concat(
         [
             curr_inactive.select(curr_cols),
             unchanged,
@@ -487,7 +487,7 @@ def apply_scd_type_2(
         how="vertical_relaxed",
     )
 
-    return result if is_lazy else result.collect()
+    return result if is_lazy else result.collect() if isinstance(result, pl.LazyFrame) else result
 
 
 def build_bridge_medicine_features(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame | pl.DataFrame:
@@ -496,7 +496,7 @@ def build_bridge_medicine_features(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFr
     Un-nest array columns (active_substance, atc_code, therapeutic_area) and melt into EAV format.
     """
     is_lazy = isinstance(df, pl.LazyFrame)
-    d: pl.LazyFrame = df.lazy() if not is_lazy else df
+    d = df.lazy() if not is_lazy else df
 
     # Check available columns to ensure they exist before trying to process them
     schema_cols = d.collect_schema().names()
@@ -555,9 +555,15 @@ def build_bridge_medicine_features(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFr
 
     # Concatenate all parts
     lazy_parts = [p if isinstance(p, pl.LazyFrame) else pl.LazyFrame(p) for p in parts]
-    result = pl.concat(lazy_parts, how="vertical_relaxed")
+    concat_result = pl.concat(lazy_parts, how="vertical_relaxed")
 
     # Deduplicate in case there are identical features
-    result = result.unique(subset=["coreason_id", "feature_type", "feature_value"])
+    concat_result = concat_result.unique(subset=["coreason_id", "feature_type", "feature_value"])
 
-    return result if is_lazy else result.collect()
+    return (
+        concat_result
+        if is_lazy
+        else concat_result.collect()
+        if isinstance(concat_result, pl.LazyFrame)
+        else concat_result
+    )
