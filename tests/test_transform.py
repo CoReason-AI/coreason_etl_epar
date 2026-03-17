@@ -4,11 +4,12 @@ from datetime import datetime
 import polars as pl
 from polars.testing import assert_frame_equal
 
-from coreason_etl_epar.schemas import RegulatoryStatusEnum
+from coreason_etl_epar.schemas import FeatureTypeEnum, RegulatoryStatusEnum
 from coreason_etl_epar.transform import (
     NAMESPACE_EMA,
     _jaro_winkler_distance,
     apply_scd_type_2,
+    build_bridge_medicine_features,
     build_dim_medicine,
     build_fact_regulatory_history,
     enrich_organizations,
@@ -477,3 +478,85 @@ def test_apply_scd_type_2_lazy() -> None:
     assert isinstance(result, pl.LazyFrame)
     df = result.collect()
     assert len(df) == 2
+
+
+def test_build_bridge_medicine_features() -> None:
+    df = pl.DataFrame(
+        {
+            "coreason_id": ["id1", "id2", "id3"],
+            "active_substance": [["sub1", "sub2"], None, ["sub3"]],
+            "atc_code": [["atc1"], ["atc2", "atc3"], []],
+            "therapeutic_area": [None, ["area1"], ["area2"]],
+        }
+    )
+
+    expected = pl.DataFrame(
+        {
+            "coreason_id": ["id1", "id1", "id3", "id1", "id2", "id2", "id2", "id3"],
+            "feature_type": [
+                FeatureTypeEnum.SUBSTANCE.value,
+                FeatureTypeEnum.SUBSTANCE.value,
+                FeatureTypeEnum.SUBSTANCE.value,
+                FeatureTypeEnum.ATC_CODE.value,
+                FeatureTypeEnum.ATC_CODE.value,
+                FeatureTypeEnum.ATC_CODE.value,
+                FeatureTypeEnum.THERAPEUTIC_AREA.value,
+                FeatureTypeEnum.THERAPEUTIC_AREA.value,
+            ],
+            "feature_value": ["sub1", "sub2", "sub3", "atc1", "atc2", "atc3", "area1", "area2"],
+        }
+    )
+
+    result = build_bridge_medicine_features(df)
+    assert isinstance(result, pl.DataFrame)
+
+    # Sort for deterministic comparison
+    sort_cols = ["coreason_id", "feature_type", "feature_value"]
+    assert_frame_equal(result.sort(sort_cols), expected.sort(sort_cols))
+
+
+def test_build_bridge_medicine_features_missing_cols() -> None:
+    df = pl.DataFrame(
+        {
+            "coreason_id": ["id1"],
+            "active_substance": [["sub1"]],
+            # atc_code and therapeutic_area are missing
+        }
+    )
+
+    expected = pl.DataFrame(
+        {
+            "coreason_id": ["id1"],
+            "feature_type": [FeatureTypeEnum.SUBSTANCE.value],
+            "feature_value": ["sub1"],
+        }
+    )
+
+    result = build_bridge_medicine_features(df)
+    assert isinstance(result, pl.DataFrame)
+    assert_frame_equal(result, expected)
+
+
+def test_build_bridge_medicine_features_empty_df() -> None:
+    # DataFrame with only coreason_id, missing feature columns
+    df = pl.DataFrame({"coreason_id": ["id1"]})
+
+    result = build_bridge_medicine_features(df)
+    assert isinstance(result, pl.DataFrame)
+    assert len(result) == 0
+    assert "feature_type" in result.columns
+    assert "feature_value" in result.columns
+
+
+def test_build_bridge_medicine_features_lazy() -> None:
+    df = pl.LazyFrame(
+        {
+            "coreason_id": ["id1"],
+            "active_substance": [["sub1"]],
+        }
+    )
+    result = build_bridge_medicine_features(df)
+    assert isinstance(result, pl.LazyFrame)
+    collected = result.collect()
+    assert len(collected) == 1
+    assert collected["feature_value"][0] == "sub1"
