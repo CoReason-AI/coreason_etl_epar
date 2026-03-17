@@ -61,7 +61,13 @@ def get_epar_index_resource(url: str) -> Generator[dict[str, Any]]:
     # Filter out Veterinary
     if "category" in df.columns:
         logger.info("Filtering out 'Veterinary' records")
+        original_count = len(df)
         df = df[df["category"] == "Human"]
+        veterinary_drop_count = original_count - len(df)
+        logger.info(
+            "Veterinary records filtered",
+            veterinary_drop_count=veterinary_drop_count,
+        )
     else:
         logger.warning("Category column not found, assuming all Human")
 
