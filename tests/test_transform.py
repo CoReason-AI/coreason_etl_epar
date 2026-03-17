@@ -54,15 +54,19 @@ def test_normalize_active_substance() -> None:
 
 
 def test_normalize_atc_code() -> None:
-    df = pl.DataFrame({"atc_code": ["A01B; C02D", "D03E,F04G", "   ", None, "A01B; ; C02D"]})
+    df = pl.DataFrame(
+        {"atc_code": ["A01BC02; C02DD03", "D03EE04,F04GG05", "   ", None, "A01BC02; ; C02DD03", "INVALID", "X99XX99"]}
+    )
     expected = pl.DataFrame(
         {
             "atc_code": [
-                ["A01B", "C02D"],
-                ["D03E", "F04G"],
+                ["A01BC02", "C02DD03"],
+                ["D03EE04", "F04GG05"],
                 [],
                 None,
-                ["A01B", "C02D"],
+                ["A01BC02", "C02DD03"],
+                [],
+                ["X99XX99"],
             ]
         }
     )
@@ -141,7 +145,7 @@ def test_normalize_epar_fields() -> None:
         {
             "product_number": ["EMEA/H/C/001234"],
             "active_substance": ["substance1 / substance2"],
-            "atc_code": ["A01B; C02D"],
+            "atc_code": ["A01BC02; C02DD03"],
             "therapeutic_area": ["Area 1; Area 2"],
             "authorisation_status": ["Authorised"],
         }
@@ -153,7 +157,7 @@ def test_normalize_epar_fields() -> None:
         {
             "product_number": ["EMEA/H/C/001234"],
             "active_substance": [["substance1", "substance2"]],
-            "atc_code": [["A01B", "C02D"]],
+            "atc_code": [["A01BC02", "C02DD03"]],
             "therapeutic_area": [["Area 1", "Area 2"]],
             "authorisation_status": [RegulatoryStatusEnum.APPROVED.value],
             "base_procedure_id": ["001234"],

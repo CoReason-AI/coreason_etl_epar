@@ -67,7 +67,7 @@ def normalize_atc_code(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame | pl.Dat
     Logic: atc_code.str.split(by=[";", ","]). Validate format (L7 standard). Store as Array.
     Trim whitespace and ignore empty elements.
     """
-    # Standardize separator first, then split
+    # Standardize separator first, then split, trim, and filter by L7 standard regex: ^[A-Z]\d{2}[A-Z]{2}\d{2}$
     return df.with_columns(
         pl.when(pl.col("atc_code").is_not_null())
         .then(
@@ -75,7 +75,11 @@ def normalize_atc_code(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame | pl.Dat
             .str.replace_all(",", ";")
             .str.split(";")
             .list.eval(pl.element().str.strip_chars())
-            .list.eval(pl.element().filter(pl.element().str.len_bytes() > 0))
+            .list.eval(
+                pl.element().filter(
+                    (pl.element().str.len_bytes() > 0) & (pl.element().str.contains(r"^[A-Z]\d{2}[A-Z]{2}\d{2}$"))
+                )
+            )
         )
         .otherwise(pl.lit(None))
         .alias("atc_code")
