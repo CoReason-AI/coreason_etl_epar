@@ -8,6 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_etl_epar
 
+import uuid
 from datetime import datetime
 
 import polars as pl
@@ -38,100 +39,106 @@ def run_pipeline(
     """
     AGENT INSTRUCTION: Orchestrate the Medallion Pipeline for EPAR data.
     """
-    logger.info("Starting EPAR ETL pipeline")
+    ingestion_batch_id = str(uuid.uuid4())
+    with logger.contextualize(ingestion_batch_id=ingestion_batch_id):
+        logger.info("Starting EPAR ETL pipeline")
 
-    # Layer 1: Bronze (The Lake)
-    logger.info("Ingesting Bronze layer data")
-    epar_generator = get_epar_index_resource(epar_url)
-    spor_generator = get_spor_organisations_resource(spor_url)
+        # Layer 1: Bronze (The Lake)
+        logger.info("Ingesting Bronze layer data")
+        epar_generator = get_epar_index_resource(epar_url)
+        spor_generator = get_spor_organisations_resource(spor_url)
 
-    # Convert generators to Polars DataFrames
-    epar_dicts = list(epar_generator)
-    spor_dicts = list(spor_generator)
+        # Convert generators to Polars DataFrames
+        epar_dicts = list(epar_generator)
+        spor_dicts = list(spor_generator)
 
-    # Determine types
-    # It's important to provide a schema in case the lists are empty, but since it's an orchestration function,
-    # we assume realistic scenarios or handle empty gracefully. We'll let polars infer the schema from dicts.
-    if not epar_dicts:
-        logger.warning("No valid EPAR records fetched.")
-        # If no EPAR records, return empty DataFrames with appropriate schemas
-        # To avoid hardcoding massive schemas, we just return empty DataFrames without schema
-        # but in a real system we'd use schemas. We'll rely on the tests to provide at least some data.
-        return pl.DataFrame(), pl.DataFrame(), pl.DataFrame()
+        # Determine types
+        # It's important to provide a schema in case the lists are empty, but since it's an orchestration function,
+        # we assume realistic scenarios or handle empty gracefully. We'll let polars infer the schema from dicts.
+        if not epar_dicts:
+            logger.warning("No valid EPAR records fetched.")
+            # If no EPAR records, return empty DataFrames with appropriate schemas
+            # To avoid hardcoding massive schemas, we just return empty DataFrames without schema
+            # but in a real system we'd use schemas. We'll rely on the tests to provide at least some data.
+            return pl.DataFrame(), pl.DataFrame(), pl.DataFrame()
 
-    epar_bronze_df = pl.DataFrame(epar_dicts)
-    spor_bronze_df = pl.DataFrame(spor_dicts)
+        epar_bronze_df = pl.DataFrame(epar_dicts)
+        spor_bronze_df = pl.DataFrame(spor_dicts)
 
-    # Layer 2: Silver (The Refinery)
-    logger.info("Processing Silver layer data")
-    epar_silver_df = normalize_epar_fields(epar_bronze_df)
+        # Layer 2: Silver (The Refinery)
+        logger.info("Processing Silver layer data")
+        epar_silver_df = normalize_epar_fields(epar_bronze_df)
 
-    if not spor_bronze_df.is_empty():
-        epar_silver_df = enrich_organizations(epar_silver_df, spor_bronze_df)
-    else:  # pragma: no cover
-        logger.warning("SPOR Bronze DataFrame is empty. Skipping enrichment.")
+        if not spor_bronze_df.is_empty():
+            epar_silver_df = enrich_organizations(epar_silver_df, spor_bronze_df)
+        else:  # pragma: no cover
+            logger.warning("SPOR Bronze DataFrame is empty. Skipping enrichment.")
 
-    # Layer 3: Gold (The Product Schema)
-    logger.info("Building Gold layer data")
-    dim_medicine_df = build_dim_medicine(epar_silver_df)
-    bridge_medicine_features_df = build_bridge_medicine_features(epar_silver_df)
+        # Layer 3: Gold (The Product Schema)
+        logger.info("Building Gold layer data")
+        dim_medicine_df = build_dim_medicine(epar_silver_df)
+        bridge_medicine_features_df = build_bridge_medicine_features(epar_silver_df)
 
-    if current_history is None or current_history.is_empty():
-        logger.info("No current history provided. Initializing first snapshot.")
-        epar_silver_history_df = epar_silver_df.with_columns(
-            [
-                pl.lit(ingestion_ts).alias("valid_from"),
-                pl.lit(None, dtype=pl.Datetime).alias("valid_to"),
-                pl.lit(True).alias("is_current"),
-            ]
-        )
-        fact_regulatory_history_df = build_fact_regulatory_history(epar_silver_history_df)
-    else:
-        logger.info("Applying SCD Type 2 logic to current history.")
-        new_history_snapshot = epar_silver_df.rename({"authorisation_status": "status"})
+        if current_history is None or current_history.is_empty():
+            logger.info("No current history provided. Initializing first snapshot.")
+            epar_silver_history_df = epar_silver_df.with_columns(
+                [
+                    pl.lit(ingestion_ts).alias("valid_from"),
+                    pl.lit(None, dtype=pl.Datetime).alias("valid_to"),
+                    pl.lit(True).alias("is_current"),
+                ]
+            )
+            fact_regulatory_history_df = build_fact_regulatory_history(epar_silver_history_df)
+        else:
+            logger.info("Applying SCD Type 2 logic to current history.")
+            new_history_snapshot = epar_silver_df.rename({"authorisation_status": "status"})
 
-        if "spor_mah_id" not in new_history_snapshot.columns:  # pragma: no cover
-            new_history_snapshot = new_history_snapshot.with_columns(pl.lit(None, dtype=pl.String).alias("spor_mah_id"))
+            if "spor_mah_id" not in new_history_snapshot.columns:  # pragma: no cover
+                new_history_snapshot = new_history_snapshot.with_columns(
+                    pl.lit(None, dtype=pl.String).alias("spor_mah_id")
+                )
 
-        hash_cols = ["status", "spor_mah_id"]
-        id_col = "coreason_id"
+            hash_cols = ["status", "spor_mah_id"]
+            id_col = "coreason_id"
 
-        cols_for_history = ["coreason_id", "status", "spor_mah_id"]
-        new_history_snapshot_aligned = new_history_snapshot.select(cols_for_history)
+            cols_for_history = ["coreason_id", "status", "spor_mah_id"]
+            new_history_snapshot_aligned = new_history_snapshot.select(cols_for_history)
 
-        new_history_snapshot_aligned = new_history_snapshot_aligned.with_columns(
-            [
-                pl.lit(None, dtype=pl.String).alias("history_id"),
-                pl.lit(None, dtype=pl.Datetime).alias("valid_from"),
-                pl.lit(None, dtype=pl.Datetime).alias("valid_to"),
-                pl.lit(None, dtype=pl.Boolean).alias("is_current"),
-            ]
-        )
+            new_history_snapshot_aligned = new_history_snapshot_aligned.with_columns(
+                [
+                    pl.lit(None, dtype=pl.String).alias("history_id"),
+                    pl.lit(None, dtype=pl.Datetime).alias("valid_from"),
+                    pl.lit(None, dtype=pl.Datetime).alias("valid_to"),
+                    pl.lit(None, dtype=pl.Boolean).alias("is_current"),
+                ]
+            )
 
-        new_history_snapshot_aligned = new_history_snapshot_aligned.select(current_history.columns)
+            new_history_snapshot_aligned = new_history_snapshot_aligned.select(current_history.columns)
 
-        fact_regulatory_history_raw_df = apply_scd_type_2(
-            current_df=current_history,
-            new_snapshot=new_history_snapshot_aligned,
-            ingestion_ts=ingestion_ts,
-            id_col=id_col,
-            hash_cols=hash_cols,
-        )
+            fact_regulatory_history_raw_df = apply_scd_type_2(
+                current_df=current_history,
+                new_snapshot=new_history_snapshot_aligned,
+                ingestion_ts=ingestion_ts,
+                id_col=id_col,
+                hash_cols=hash_cols,
+            )
 
-        if isinstance(fact_regulatory_history_raw_df, pl.LazyFrame):  # pragma: no cover
-            fact_regulatory_history_raw_df = fact_regulatory_history_raw_df.collect()
+            if isinstance(fact_regulatory_history_raw_df, pl.LazyFrame):  # pragma: no cover
+                fact_regulatory_history_raw_df = fact_regulatory_history_raw_df.collect()
 
-        fact_regulatory_history_pre_build = fact_regulatory_history_raw_df.rename({"status": "authorisation_status"})
+            fact_regulatory_history_pre_build = fact_regulatory_history_raw_df.rename(
+                {"status": "authorisation_status"}
+            )
 
-        fact_regulatory_history_df = build_fact_regulatory_history(fact_regulatory_history_pre_build)
+            fact_regulatory_history_df = build_fact_regulatory_history(fact_regulatory_history_pre_build)
 
-    # Ensure returning DataFrames
-    if isinstance(dim_medicine_df, pl.LazyFrame):  # pragma: no cover
-        dim_medicine_df = dim_medicine_df.collect()
-    if isinstance(bridge_medicine_features_df, pl.LazyFrame):  # pragma: no cover
-        bridge_medicine_features_df = bridge_medicine_features_df.collect()
-    if isinstance(fact_regulatory_history_df, pl.LazyFrame):  # pragma: no cover
-        fact_regulatory_history_df = fact_regulatory_history_df.collect()
+        # Ensure returning DataFrames
+        if isinstance(dim_medicine_df, pl.LazyFrame):  # pragma: no cover
+            dim_medicine_df = dim_medicine_df.collect()
+        if isinstance(bridge_medicine_features_df, pl.LazyFrame):  # pragma: no cover
+            bridge_medicine_features_df = bridge_medicine_features_df.collect()
+        if isinstance(fact_regulatory_history_df, pl.LazyFrame):  # pragma: no cover
+            fact_regulatory_history_df = fact_regulatory_history_df.collect()
 
-    logger.info("Pipeline completed successfully.")
-    return dim_medicine_df, fact_regulatory_history_df, bridge_medicine_features_df
+        logger.info("Pipeline completed successfully.")
+        return dim_medicine_df, fact_regulatory_history_df, bridge_medicine_features_df

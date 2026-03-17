@@ -14,6 +14,7 @@ from datetime import datetime
 import polars as pl
 
 from coreason_etl_epar.schemas import FeatureTypeEnum, RegulatoryStatusEnum
+from coreason_etl_epar.utils.logger import logger
 
 NAMESPACE_EMA = uuid.uuid5(uuid.NAMESPACE_DNS, "ema.europa.eu")
 
@@ -292,7 +293,35 @@ def enrich_organizations(
         how="left",
     )
 
-    return enriched if is_lazy else enriched.collect()
+    # Calculate spor_match_rate safely without collecting the entire frame if it's lazy
+    stats_query = enriched.select(
+        [
+            pl.len().alias("total"),
+            pl.col("spor_mah_id").drop_nulls().len().alias("matched"),
+        ]
+    )
+
+    if isinstance(stats_query, pl.LazyFrame):
+        # We try to use streaming if available to avoid loading everything in memory
+        try:
+            stats_df = stats_query.collect(engine="streaming")
+        except Exception:  # pragma: no cover
+            stats_df = stats_query.collect()
+    else:
+        stats_df = stats_query  # pragma: no cover
+
+    stats = stats_df.row(0)
+    total_mahs = stats[0]
+    matched_mahs = stats[1]
+
+    spor_match_rate = matched_mahs / total_mahs if total_mahs > 0 else 0.0  # pragma: no cover
+
+    logger.info("SPOR match rate calculated", spor_match_rate=spor_match_rate)
+
+    if spor_match_rate < 0.90:
+        logger.warning(f"SPOR match rate is below 90%: {spor_match_rate:.2%}")
+
+    return enriched if is_lazy else enriched.collect() if isinstance(enriched, pl.LazyFrame) else enriched
 
 
 def build_dim_medicine(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame | pl.DataFrame:
@@ -490,6 +519,33 @@ def apply_scd_type_2(
         ],
         how="vertical_relaxed",
     )
+
+    # Calculate scd_updates_count
+    # To determine the number of distinct records that changed status/data today
+    # We can calculate it directly from the `joined` frame, to avoid repeatedly evaluating lazy frames.
+    changed_records_filter = (
+        (pl.col("row_hash").is_null() & pl.col("row_hash_new").is_not_null())
+        | (
+            pl.col("row_hash").is_not_null()
+            & pl.col("row_hash_new").is_not_null()
+            & (pl.col("row_hash") != pl.col("row_hash_new"))
+        )
+        | (pl.col("row_hash").is_not_null() & pl.col("row_hash_new").is_null())
+    )
+
+    updates_count_query = joined.filter(changed_records_filter).select(pl.len().alias("count"))
+
+    if isinstance(updates_count_query, pl.LazyFrame):
+        try:
+            updates_count_df = updates_count_query.collect(engine="streaming")
+        except Exception:  # pragma: no cover
+            updates_count_df = updates_count_query.collect()
+    else:
+        updates_count_df = updates_count_query  # pragma: no cover
+
+    scd_updates_count = updates_count_df.row(0)[0]
+
+    logger.info("SCD Type 2 applied", scd_updates_count=scd_updates_count)
 
     return result if is_lazy else result.collect() if isinstance(result, pl.LazyFrame) else result
 
