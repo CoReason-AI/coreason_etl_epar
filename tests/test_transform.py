@@ -327,26 +327,26 @@ def test_enrich_organizations() -> None:
 def test_build_dim_medicine() -> None:
     df = pl.DataFrame(
         {
-            "coreason_id": ["id1", "id2", "id1"],
-            "medicine_name": ["Med1", "Med2", "Med1"],
-            "base_procedure_id": ["proc1", "proc2", "proc1"],
-            "biosimilar": [True, False, True],
-            "generic": [False, True, False],
-            "orphan": [False, False, False],
-            "url": ["http://url1", "http://url2", "http://url1"],
+            "coreason_id": ["id1", "id2", "id1", "id3"],
+            "medicine_name": ["Med1", "Med2", "Med1", "Med3"],
+            "base_procedure_id": ["proc1", "proc2", "proc1", "proc3"],
+            "biosimilar": [True, False, True, None],
+            "generic": [False, True, False, None],
+            "orphan": [False, False, False, None],
+            "url": ["http://url1", "http://url2", "http://url1", "http://url3"],
         }
     )
 
     expected = pl.DataFrame(
         {
-            "coreason_id": ["id1", "id2"],
-            "medicine_name": ["Med1", "Med2"],
-            "base_procedure_id": ["proc1", "proc2"],
-            "brand_name": [None, None],
-            "is_biosimilar": [True, False],
-            "is_generic": [False, True],
-            "is_orphan": [False, False],
-            "ema_product_url": ["http://url1", "http://url2"],
+            "coreason_id": ["id1", "id2", "id3"],
+            "medicine_name": ["Med1", "Med2", "Med3"],
+            "base_procedure_id": ["proc1", "proc2", "proc3"],
+            "brand_name": [None, None, None],
+            "is_biosimilar": [True, False, False],
+            "is_generic": [False, True, False],
+            "is_orphan": [False, False, False],
+            "ema_product_url": ["http://url1", "http://url2", "http://url3"],
         }
     )
     # We cast brand_name to pl.String in case it infers as pl.Null
