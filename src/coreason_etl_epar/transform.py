@@ -321,7 +321,13 @@ def enrich_organizations(
     if spor_match_rate < 0.90:
         logger.warning(f"SPOR match rate is below 90%: {spor_match_rate:.2%}")
 
-    return enriched if is_lazy else enriched.collect() if isinstance(enriched, pl.LazyFrame) else enriched
+    return (
+        enriched
+        if is_lazy
+        else enriched.collect(engine="streaming")
+        if isinstance(enriched, pl.LazyFrame)
+        else enriched
+    )
 
 
 def build_dim_medicine(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame | pl.DataFrame:

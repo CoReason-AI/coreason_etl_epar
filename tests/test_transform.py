@@ -321,7 +321,8 @@ def test_enrich_organizations() -> None:
     result_df = enrich_organizations(epar_df, spor_df, threshold=0.90)
 
     assert isinstance(result_df, pl.DataFrame)
-    assert_frame_equal(result_df, expected_df)
+    # The order may change due to join operations and streaming engine, so sort before comparison
+    assert_frame_equal(result_df.sort("product_number"), expected_df.sort("product_number"))
 
 
 def test_build_dim_medicine() -> None:
