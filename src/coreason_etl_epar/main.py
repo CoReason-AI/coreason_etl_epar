@@ -49,7 +49,8 @@ def run_pipeline(
         spor_generator = get_spor_organisations_resource(spor_url)
 
         # Convert generators to Polars DataFrames
-        epar_dicts = list(epar_generator)
+        # Filter out quarantined records (DataItemWithMeta) to avoid DataFrame casting errors
+        epar_dicts = [item for item in epar_generator if isinstance(item, dict)]
         spor_dicts = list(spor_generator)
 
         # Determine types

@@ -76,6 +76,47 @@ def test_run_pipeline_initial_load(mock_epar_res: Mock, mock_spor_res: Mock) -> 
 
 @patch("coreason_etl_epar.main.get_spor_organisations_resource")
 @patch("coreason_etl_epar.main.get_epar_index_resource")
+def test_run_pipeline_quarantine_records_ignored(mock_epar_res: Mock, mock_spor_res: Mock) -> None:
+    import dlt
+
+    mock_epar_res.return_value = iter(
+        [
+            dlt.mark.with_table_name({"error": "test_error"}, "epar_index_quarantine"),
+            {
+                "category": "Human",
+                "product_number": "EMEA/H/C/001235",
+                "medicine_name": "GoodDrug",
+                "marketing_authorisation_holder": "GoodCorp",
+                "active_substance": "Substance G",
+                "therapeutic_area": "Area G",
+                "atc_code": "B10BA02",
+                "generic": False,
+                "biosimilar": False,
+                "orphan": False,
+                "conditional_approval": False,
+                "exceptional_circumstances": False,
+                "authorisation_status": "Authorised",
+                "revision_date": "2023-01-01T00:00:00",
+                "url": "https://www.ema.europa.eu/en/medicines/human/EPAR/gooddrug",
+            },
+        ]
+    )
+    mock_spor_res.return_value = iter([])
+
+    dim, fact, _bridge = run_pipeline(
+        epar_url="http://fake-epar",
+        spor_url="http://fake-spor",
+        ingestion_ts=datetime(2023, 10, 1),
+    )
+
+    # We expect only the valid record to be processed
+    assert len(dim) == 1
+    assert dim["medicine_name"][0] == "GoodDrug"
+    assert len(fact) == 1
+
+
+@patch("coreason_etl_epar.main.get_spor_organisations_resource")
+@patch("coreason_etl_epar.main.get_epar_index_resource")
 def test_run_pipeline_empty_load(mock_epar_res: Mock, mock_spor_res: Mock) -> None:
     mock_epar_res.return_value = iter([])
     mock_spor_res.return_value = iter([])
