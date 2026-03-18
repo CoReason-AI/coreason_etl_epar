@@ -335,9 +335,9 @@ def build_dim_medicine(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame | pl.Dat
             pl.col("medicine_name"),
             pl.col("base_procedure_id"),
             pl.lit(None, dtype=pl.String).alias("brand_name"),
-            pl.col("biosimilar").alias("is_biosimilar"),
-            pl.col("generic").alias("is_generic"),
-            pl.col("orphan").alias("is_orphan"),
+            pl.col("biosimilar").fill_null(False).alias("is_biosimilar"),
+            pl.col("generic").fill_null(False).alias("is_generic"),
+            pl.col("orphan").fill_null(False).alias("is_orphan"),
             pl.col("url").alias("ema_product_url"),
         ]
     ).unique(subset=["coreason_id"], keep="first")
