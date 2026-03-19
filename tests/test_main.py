@@ -240,10 +240,7 @@ def test_run_pipeline_idempotency(mock_epar_res: Mock, mock_spor_res: Mock) -> N
     ingestion_ts_1 = datetime(2023, 10, 1)
 
     _dim_1, fact_1, _bridge_1 = run_pipeline(
-        epar_url="http://fake-epar",
-        spor_url="http://fake-spor",
-        ingestion_ts=ingestion_ts_1,
-        current_history=None
+        epar_url="http://fake-epar", spor_url="http://fake-spor", ingestion_ts=ingestion_ts_1, current_history=None
     )
 
     # Reset iterators for the second run
@@ -254,10 +251,7 @@ def test_run_pipeline_idempotency(mock_epar_res: Mock, mock_spor_res: Mock) -> N
     ingestion_ts_2 = datetime(2023, 10, 2)
 
     _dim_2, fact_2, _bridge_2 = run_pipeline(
-        epar_url="http://fake-epar",
-        spor_url="http://fake-spor",
-        ingestion_ts=ingestion_ts_2,
-        current_history=fact_1
+        epar_url="http://fake-epar", spor_url="http://fake-spor", ingestion_ts=ingestion_ts_2, current_history=fact_1
     )
 
     # Asserts for strict idempotency
