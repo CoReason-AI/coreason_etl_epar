@@ -266,3 +266,120 @@ def test_run_pipeline_idempotency(mock_epar_res: Mock, mock_spor_res: Mock) -> N
     assert fact_2["valid_from"][0] == ingestion_ts_1
     assert fact_2["valid_to"][0] is None
     assert fact_2["is_current"][0] is True
+
+
+@patch("coreason_etl_epar.main.get_spor_organisations_resource")
+@patch("coreason_etl_epar.main.get_epar_index_resource")
+def test_run_pipeline_complex_idempotency_with_changes(mock_epar_res: Mock, mock_spor_res: Mock) -> None:
+    # This test verifies that after an update occurs, subsequent identical payloads
+    # do not create new facts or alter the history timeline established during the update.
+    # It tests: Day 1 (Insert) -> Day 2 (Update) -> Day 3 (Idempotent replay of Day 2).
+
+    # Day 1 Data
+    epar_data_day1 = [
+        {
+            "category": "Human",
+            "product_number": "EMEA/H/C/009999",
+            "medicine_name": "ComplexDrug",
+            "marketing_authorisation_holder": "ComplexCorp",
+            "active_substance": "Substance C",
+            "therapeutic_area": "Area C",
+            "atc_code": "C10BA02",
+            "generic": False,
+            "biosimilar": False,
+            "orphan": False,
+            "conditional_approval": False,
+            "exceptional_circumstances": False,
+            "authorisation_status": "Authorised",
+            "revision_date": "2023-01-01T00:00:00",
+            "url": "https://www.ema.europa.eu/en/medicines/human/EPAR/complexdrug",
+        }
+    ]
+    spor_data = [{"org_id": "ORG9999", "org_name": "complexcorp"}]
+
+    mock_epar_res.return_value = iter(epar_data_day1)
+    mock_spor_res.return_value = iter(spor_data)
+
+    # Run 1: Initial Insert (Day 1)
+    ingestion_ts_day1 = datetime(2023, 10, 1)
+    _dim_1, fact_1, _bridge_1 = run_pipeline(
+        epar_url="http://fake-epar", spor_url="http://fake-spor", ingestion_ts=ingestion_ts_day1, current_history=None
+    )
+
+    # Asserts for Day 1
+    assert len(fact_1) == 1
+    assert fact_1["status"][0] == RegulatoryStatusEnum.APPROVED.value
+    assert fact_1["valid_from"][0] == ingestion_ts_day1
+    assert fact_1["valid_to"][0] is None
+    assert fact_1["is_current"][0] is True
+
+    # Day 2 Data (Status changes to Withdrawn)
+    epar_data_day2 = [
+        {
+            "category": "Human",
+            "product_number": "EMEA/H/C/009999",
+            "medicine_name": "ComplexDrug",
+            "marketing_authorisation_holder": "ComplexCorp",
+            "active_substance": "Substance C",
+            "therapeutic_area": "Area C",
+            "atc_code": "C10BA02",
+            "generic": False,
+            "biosimilar": False,
+            "orphan": False,
+            "conditional_approval": False,
+            "exceptional_circumstances": False,
+            "authorisation_status": "Withdrawn",
+            "revision_date": "2023-10-02T00:00:00",
+            "url": "https://www.ema.europa.eu/en/medicines/human/EPAR/complexdrug",
+        }
+    ]
+
+    mock_epar_res.return_value = iter(epar_data_day2)
+    mock_spor_res.return_value = iter(spor_data)
+
+    # Run 2: Status Update (Day 2)
+    ingestion_ts_day2 = datetime(2023, 10, 2)
+    _dim_2, fact_2, _bridge_2 = run_pipeline(
+        epar_url="http://fake-epar", spor_url="http://fake-spor", ingestion_ts=ingestion_ts_day2, current_history=fact_1
+    )
+
+    # Asserts for Day 2: Should now have 2 rows (old closed, new open)
+    assert len(fact_2) == 2
+    fact_2_sorted = fact_2.sort("valid_from")
+
+    # Verify Old Row Closed
+    assert fact_2_sorted["status"][0] == RegulatoryStatusEnum.APPROVED.value
+    assert fact_2_sorted["is_current"][0] is False
+    assert fact_2_sorted["valid_to"][0] == ingestion_ts_day2
+
+    # Verify New Row Opened
+    assert fact_2_sorted["status"][1] == RegulatoryStatusEnum.WITHDRAWN.value
+    assert fact_2_sorted["is_current"][1] is True
+    assert fact_2_sorted["valid_from"][1] == ingestion_ts_day2
+    assert fact_2_sorted["valid_to"][1] is None
+
+    # Run 3: Idempotent replay of Day 2 payload on Day 3
+    mock_epar_res.return_value = iter(epar_data_day2)
+    mock_spor_res.return_value = iter(spor_data)
+
+    ingestion_ts_day3 = datetime(2023, 10, 3)
+    _dim_3, fact_3, _bridge_3 = run_pipeline(
+        epar_url="http://fake-epar", spor_url="http://fake-spor", ingestion_ts=ingestion_ts_day3, current_history=fact_2
+    )
+
+    # Asserts for Day 3: Strict Idempotency check
+    # 1. Total history length must still be exactly 2
+    assert len(fact_3) == 2
+
+    fact_3_sorted = fact_3.sort("valid_from")
+
+    # 2. Old row remains unchanged from Day 2 state
+    assert fact_3_sorted["status"][0] == RegulatoryStatusEnum.APPROVED.value
+    assert fact_3_sorted["is_current"][0] is False
+    assert fact_3_sorted["valid_to"][0] == ingestion_ts_day2
+
+    # 3. New row remains perfectly active from Day 2 ingestion_ts
+    assert fact_3_sorted["status"][1] == RegulatoryStatusEnum.WITHDRAWN.value
+    assert fact_3_sorted["is_current"][1] is True
+    assert fact_3_sorted["valid_from"][1] == ingestion_ts_day2  # Lock to Day 2!
+    assert fact_3_sorted["valid_to"][1] is None
