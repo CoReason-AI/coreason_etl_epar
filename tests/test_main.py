@@ -21,9 +21,11 @@ def test_hello_world() -> None:
     assert hello_world() == "Hello World!"
 
 
+@patch("coreason_etl_epar.main.dlt.pipeline")
 @patch("coreason_etl_epar.main.get_spor_organisations_resource")
 @patch("coreason_etl_epar.main.get_epar_index_resource")
-def test_run_pipeline_initial_load(mock_epar_res: Mock, mock_spor_res: Mock) -> None:
+def test_run_pipeline_initial_load(mock_epar_res: Mock, mock_spor_res: Mock, mock_dlt_pipeline: Mock) -> None:
+    mock_dlt_pipeline.return_value = Mock()
     # Synthetic Bronze Data from Generators
     mock_epar_res.return_value = iter(
         [
@@ -52,7 +54,11 @@ def test_run_pipeline_initial_load(mock_epar_res: Mock, mock_spor_res: Mock) -> 
     ingestion_ts = datetime(2023, 10, 1)
 
     dim, fact, bridge = run_pipeline(
-        epar_url="http://fake-epar", spor_url="http://fake-spor", ingestion_ts=ingestion_ts, current_history=None
+        epar_url="http://fake-epar",
+        spor_url="http://fake-spor",
+        ingestion_ts=ingestion_ts,
+        current_history=None,
+        destination="dummy",
     )
 
     assert isinstance(dim, pl.DataFrame)
@@ -74,9 +80,13 @@ def test_run_pipeline_initial_load(mock_epar_res: Mock, mock_spor_res: Mock) -> 
     assert len(bridge) == 3
 
 
+@patch("coreason_etl_epar.main.dlt.pipeline")
 @patch("coreason_etl_epar.main.get_spor_organisations_resource")
 @patch("coreason_etl_epar.main.get_epar_index_resource")
-def test_run_pipeline_quarantine_records_ignored(mock_epar_res: Mock, mock_spor_res: Mock) -> None:
+def test_run_pipeline_quarantine_records_ignored(
+    mock_epar_res: Mock, mock_spor_res: Mock, mock_dlt_pipeline: Mock
+) -> None:
+    mock_dlt_pipeline.return_value = Mock()
     import dlt
 
     mock_epar_res.return_value = iter(
@@ -107,6 +117,7 @@ def test_run_pipeline_quarantine_records_ignored(mock_epar_res: Mock, mock_spor_
         epar_url="http://fake-epar",
         spor_url="http://fake-spor",
         ingestion_ts=datetime(2023, 10, 1),
+        destination="dummy",
     )
 
     # We expect only the valid record to be processed
@@ -115,16 +126,16 @@ def test_run_pipeline_quarantine_records_ignored(mock_epar_res: Mock, mock_spor_
     assert len(fact) == 1
 
 
+@patch("coreason_etl_epar.main.dlt.pipeline")
 @patch("coreason_etl_epar.main.get_spor_organisations_resource")
 @patch("coreason_etl_epar.main.get_epar_index_resource")
-def test_run_pipeline_empty_load(mock_epar_res: Mock, mock_spor_res: Mock) -> None:
+def test_run_pipeline_empty_load(mock_epar_res: Mock, mock_spor_res: Mock, mock_dlt_pipeline: Mock) -> None:
+    mock_dlt_pipeline.return_value = Mock()
     mock_epar_res.return_value = iter([])
     mock_spor_res.return_value = iter([])
 
     dim, fact, bridge = run_pipeline(
-        epar_url="http://fake",
-        spor_url="http://fake",
-        ingestion_ts=datetime(2023, 1, 1),
+        epar_url="http://fake", spor_url="http://fake", ingestion_ts=datetime(2023, 1, 1), destination="dummy"
     )
 
     assert isinstance(dim, pl.DataFrame)
@@ -133,9 +144,11 @@ def test_run_pipeline_empty_load(mock_epar_res: Mock, mock_spor_res: Mock) -> No
     assert len(bridge) == 0
 
 
+@patch("coreason_etl_epar.main.dlt.pipeline")
 @patch("coreason_etl_epar.main.get_spor_organisations_resource")
 @patch("coreason_etl_epar.main.get_epar_index_resource")
-def test_run_pipeline_incremental_load(mock_epar_res: Mock, mock_spor_res: Mock) -> None:
+def test_run_pipeline_incremental_load(mock_epar_res: Mock, mock_spor_res: Mock, mock_dlt_pipeline: Mock) -> None:
+    mock_dlt_pipeline.return_value = Mock()
     import uuid
 
     from coreason_etl_epar.transform import NAMESPACE_EMA
@@ -186,6 +199,7 @@ def test_run_pipeline_incremental_load(mock_epar_res: Mock, mock_spor_res: Mock)
         spor_url="http://fake-spor",
         ingestion_ts=ingestion_ts,
         current_history=current_history,
+        destination="dummy",
     )
 
     # Fact should now have 2 rows for this coreason_id:
@@ -209,9 +223,11 @@ def test_run_pipeline_incremental_load(mock_epar_res: Mock, mock_spor_res: Mock)
     assert fact_sorted["valid_from"][1] == ingestion_ts
 
 
+@patch("coreason_etl_epar.main.dlt.pipeline")
 @patch("coreason_etl_epar.main.get_spor_organisations_resource")
 @patch("coreason_etl_epar.main.get_epar_index_resource")
-def test_run_pipeline_idempotency(mock_epar_res: Mock, mock_spor_res: Mock) -> None:
+def test_run_pipeline_idempotency(mock_epar_res: Mock, mock_spor_res: Mock, mock_dlt_pipeline: Mock) -> None:
+    mock_dlt_pipeline.return_value = Mock()
     # 1st run data
     epar_data = [
         {
@@ -240,7 +256,11 @@ def test_run_pipeline_idempotency(mock_epar_res: Mock, mock_spor_res: Mock) -> N
     ingestion_ts_1 = datetime(2023, 10, 1)
 
     _dim_1, fact_1, _bridge_1 = run_pipeline(
-        epar_url="http://fake-epar", spor_url="http://fake-spor", ingestion_ts=ingestion_ts_1, current_history=None
+        epar_url="http://fake-epar",
+        spor_url="http://fake-spor",
+        ingestion_ts=ingestion_ts_1,
+        current_history=None,
+        destination="dummy",
     )
 
     # Reset iterators for the second run
@@ -251,7 +271,11 @@ def test_run_pipeline_idempotency(mock_epar_res: Mock, mock_spor_res: Mock) -> N
     ingestion_ts_2 = datetime(2023, 10, 2)
 
     _dim_2, fact_2, _bridge_2 = run_pipeline(
-        epar_url="http://fake-epar", spor_url="http://fake-spor", ingestion_ts=ingestion_ts_2, current_history=fact_1
+        epar_url="http://fake-epar",
+        spor_url="http://fake-spor",
+        ingestion_ts=ingestion_ts_2,
+        current_history=fact_1,
+        destination="dummy",
     )
 
     # Asserts for strict idempotency
@@ -268,9 +292,13 @@ def test_run_pipeline_idempotency(mock_epar_res: Mock, mock_spor_res: Mock) -> N
     assert fact_2["is_current"][0] is True
 
 
+@patch("coreason_etl_epar.main.dlt.pipeline")
 @patch("coreason_etl_epar.main.get_spor_organisations_resource")
 @patch("coreason_etl_epar.main.get_epar_index_resource")
-def test_run_pipeline_complex_idempotency_with_changes(mock_epar_res: Mock, mock_spor_res: Mock) -> None:
+def test_run_pipeline_complex_idempotency_with_changes(
+    mock_epar_res: Mock, mock_spor_res: Mock, mock_dlt_pipeline: Mock
+) -> None:
+    mock_dlt_pipeline.return_value = Mock()
     # This test verifies that after an update occurs, subsequent identical payloads
     # do not create new facts or alter the history timeline established during the update.
     # It tests: Day 1 (Insert) -> Day 2 (Update) -> Day 3 (Idempotent replay of Day 2).
@@ -303,7 +331,11 @@ def test_run_pipeline_complex_idempotency_with_changes(mock_epar_res: Mock, mock
     # Run 1: Initial Insert (Day 1)
     ingestion_ts_day1 = datetime(2023, 10, 1)
     _dim_1, fact_1, _bridge_1 = run_pipeline(
-        epar_url="http://fake-epar", spor_url="http://fake-spor", ingestion_ts=ingestion_ts_day1, current_history=None
+        epar_url="http://fake-epar",
+        spor_url="http://fake-spor",
+        ingestion_ts=ingestion_ts_day1,
+        current_history=None,
+        destination="dummy",
     )
 
     # Asserts for Day 1
@@ -340,7 +372,11 @@ def test_run_pipeline_complex_idempotency_with_changes(mock_epar_res: Mock, mock
     # Run 2: Status Update (Day 2)
     ingestion_ts_day2 = datetime(2023, 10, 2)
     _dim_2, fact_2, _bridge_2 = run_pipeline(
-        epar_url="http://fake-epar", spor_url="http://fake-spor", ingestion_ts=ingestion_ts_day2, current_history=fact_1
+        epar_url="http://fake-epar",
+        spor_url="http://fake-spor",
+        ingestion_ts=ingestion_ts_day2,
+        current_history=fact_1,
+        destination="dummy",
     )
 
     # Asserts for Day 2: Should now have 2 rows (old closed, new open)
@@ -364,7 +400,11 @@ def test_run_pipeline_complex_idempotency_with_changes(mock_epar_res: Mock, mock
 
     ingestion_ts_day3 = datetime(2023, 10, 3)
     _dim_3, fact_3, _bridge_3 = run_pipeline(
-        epar_url="http://fake-epar", spor_url="http://fake-spor", ingestion_ts=ingestion_ts_day3, current_history=fact_2
+        epar_url="http://fake-epar",
+        spor_url="http://fake-spor",
+        ingestion_ts=ingestion_ts_day3,
+        current_history=fact_2,
+        destination="dummy",
     )
 
     # Asserts for Day 3: Strict Idempotency check
