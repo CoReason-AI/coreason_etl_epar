@@ -207,3 +207,68 @@ def test_run_pipeline_incremental_load(mock_epar_res: Mock, mock_spor_res: Mock)
     assert fact_sorted["is_current"][1] is True
     assert fact_sorted["valid_to"][1] is None
     assert fact_sorted["valid_from"][1] == ingestion_ts
+
+
+@patch("coreason_etl_epar.main.get_spor_organisations_resource")
+@patch("coreason_etl_epar.main.get_epar_index_resource")
+def test_run_pipeline_idempotency(mock_epar_res: Mock, mock_spor_res: Mock) -> None:
+    # 1st run data
+    epar_data = [
+        {
+            "category": "Human",
+            "product_number": "EMEA/H/C/001234",
+            "medicine_name": "IdempotentDrug",
+            "marketing_authorisation_holder": "IdempotentCorp",
+            "active_substance": "Substance I",
+            "therapeutic_area": "Area I",
+            "atc_code": "I10BA02",
+            "generic": False,
+            "biosimilar": False,
+            "orphan": False,
+            "conditional_approval": False,
+            "exceptional_circumstances": False,
+            "authorisation_status": "Authorised",
+            "revision_date": "2023-01-01T00:00:00",
+            "url": "https://www.ema.europa.eu/en/medicines/human/EPAR/idempotentdrug",
+        }
+    ]
+    spor_data = [{"org_id": "ORG2000", "org_name": "idempotentcorp"}]
+
+    mock_epar_res.return_value = iter(epar_data)
+    mock_spor_res.return_value = iter(spor_data)
+
+    ingestion_ts_1 = datetime(2023, 10, 1)
+
+    _dim_1, fact_1, _bridge_1 = run_pipeline(
+        epar_url="http://fake-epar",
+        spor_url="http://fake-spor",
+        ingestion_ts=ingestion_ts_1,
+        current_history=None
+    )
+
+    # Reset iterators for the second run
+    mock_epar_res.return_value = iter(epar_data)
+    mock_spor_res.return_value = iter(spor_data)
+
+    # 2nd run on the same data but later ingestion_ts
+    ingestion_ts_2 = datetime(2023, 10, 2)
+
+    _dim_2, fact_2, _bridge_2 = run_pipeline(
+        epar_url="http://fake-epar",
+        spor_url="http://fake-spor",
+        ingestion_ts=ingestion_ts_2,
+        current_history=fact_1
+    )
+
+    # Asserts for strict idempotency
+    # 1. Row counts should be exactly the same
+    assert len(fact_1) == len(fact_2)
+
+    # 2. No new facts created
+    assert len(fact_2) == 1
+
+    # 3. History remains completely unchanged from the first run
+    # valid_from and valid_to timestamps should still reflect ingestion_ts_1
+    assert fact_2["valid_from"][0] == ingestion_ts_1
+    assert fact_2["valid_to"][0] is None
+    assert fact_2["is_current"][0] is True
