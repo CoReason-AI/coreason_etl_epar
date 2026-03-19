@@ -11,6 +11,7 @@
 import uuid
 from datetime import datetime
 
+import dlt
 import polars as pl
 
 from coreason_etl_epar.ingest import get_epar_index_resource, get_spor_organisations_resource
@@ -35,9 +36,14 @@ def run_pipeline(
     spor_url: str,
     ingestion_ts: datetime,
     current_history: pl.DataFrame | None = None,
+    destination: str = "postgres",
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     """
-    AGENT INSTRUCTION: Orchestrate the Medallion Pipeline for EPAR data.
+    AGENT INSTRUCTION: Orchestrate the Medallion Pipeline for EPAR data and write to database.
+    Standard Naming Convention:
+    Gold: coreason_etl_epar_gold_[table_name]
+    Silver: coreason_etl_epar_silver_[table_name]
+    Bronze: coreason_etl_epar_bronze_[table_name]
     """
     ingestion_batch_id = str(uuid.uuid4())
     with logger.contextualize(ingestion_batch_id=ingestion_batch_id):
@@ -140,6 +146,46 @@ def run_pipeline(
             bridge_medicine_features_df = bridge_medicine_features_df.collect()
         if isinstance(fact_regulatory_history_df, pl.LazyFrame):  # pragma: no cover
             fact_regulatory_history_df = fact_regulatory_history_df.collect()
+
+        logger.info("Writing to Bronze schema")
+        bronze_pipeline = dlt.pipeline(
+            pipeline_name="coreason_etl_epar_bronze", destination=destination, dataset_name="bronze"
+        )
+        bronze_pipeline.run(
+            [
+                dlt.resource(epar_bronze_df.to_dicts(), name="coreason_etl_epar_bronze_epar_index"),
+                dlt.resource(spor_bronze_df.to_dicts(), name="coreason_etl_epar_bronze_spor_organisations"),
+            ],
+            write_disposition="replace",
+        )
+
+        logger.info("Writing to Silver schema")
+        silver_pipeline = dlt.pipeline(
+            pipeline_name="coreason_etl_epar_silver", destination=destination, dataset_name="silver"
+        )
+        silver_pipeline.run(
+            [dlt.resource(epar_silver_df.to_dicts(), name="coreason_etl_epar_silver_epar_normalized")],
+            write_disposition="replace",
+        )
+
+        logger.info("Writing to Gold schema")
+        gold_pipeline = dlt.pipeline(
+            pipeline_name="coreason_etl_epar_gold", destination=destination, dataset_name="gold"
+        )
+        gold_pipeline.run(
+            [
+                dlt.resource(dim_medicine_df.to_dicts(), name="coreason_etl_epar_gold_dim_medicine"),
+                dlt.resource(
+                    fact_regulatory_history_df.to_dicts(),
+                    name="coreason_etl_epar_gold_fact_regulatory_history",
+                ),
+                dlt.resource(
+                    bridge_medicine_features_df.to_dicts(),
+                    name="coreason_etl_epar_gold_bridge_medicine_features",
+                ),
+            ],
+            write_disposition="replace",
+        )
 
         logger.info("Pipeline completed successfully.")
         return dim_medicine_df, fact_regulatory_history_df, bridge_medicine_features_df
