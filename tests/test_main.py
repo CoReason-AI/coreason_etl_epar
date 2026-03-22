@@ -648,3 +648,78 @@ def test_run_pipeline_idempotency_status_reverted(
     fact_4_sorted = fact_4.sort("valid_from")
     assert fact_4_sorted["is_current"][2] is True
     assert fact_4_sorted["valid_from"][2] == ingestion_ts_day3
+
+
+@patch("coreason_etl_epar.main.dlt.pipeline")
+@patch("coreason_etl_epar.main.get_spor_organisations_resource")
+@patch("coreason_etl_epar.main.get_epar_index_resource")
+def test_run_pipeline_schema_and_table_naming_conventions(
+    mock_epar_res: Mock, mock_spor_res: Mock, mock_dlt_pipeline: Mock
+) -> None:
+    # We want to trace all calls to dlt.pipeline and the returned pipeline's run() method.
+    mock_pipeline_instance = Mock()
+    mock_dlt_pipeline.return_value = mock_pipeline_instance
+
+    mock_epar_res.return_value = iter(
+        [
+            {
+                "category": "Human",
+                "product_number": "EMEA/H/C/000003",
+                "medicine_name": "TestDrug",
+                "marketing_authorisation_holder": "TestCorp",
+                "active_substance": "Substance T",
+                "therapeutic_area": "Area T",
+                "atc_code": "T10BA02",
+                "generic": False,
+                "biosimilar": False,
+                "orphan": False,
+                "conditional_approval": False,
+                "exceptional_circumstances": False,
+                "authorisation_status": "Authorised",
+                "url": "https://www.ema.europa.eu",
+            }
+        ]
+    )
+    mock_spor_res.return_value = iter([{"org_id": "ORG0003", "org_name": "testcorp"}])
+
+    run_pipeline(
+        epar_url="http://fake",
+        spor_url="http://fake",
+        ingestion_ts=datetime(2023, 10, 1),
+    )
+
+    # Check all calls to dlt.pipeline
+    pipeline_calls = mock_dlt_pipeline.call_args_list
+    assert len(pipeline_calls) == 3
+
+    # 1. Bronze Pipeline
+    assert pipeline_calls[0].kwargs["dataset_name"] == "bronze"
+    assert pipeline_calls[0].kwargs["pipeline_name"] == "coreason_etl_epar_bronze"
+
+    # 2. Silver Pipeline
+    assert pipeline_calls[1].kwargs["dataset_name"] == "silver"
+    assert pipeline_calls[1].kwargs["pipeline_name"] == "coreason_etl_epar_silver"
+
+    # 3. Gold Pipeline
+    assert pipeline_calls[2].kwargs["dataset_name"] == "gold"
+    assert pipeline_calls[2].kwargs["pipeline_name"] == "coreason_etl_epar_gold"
+
+    # Now check the resources passed to the pipeline.run() calls
+    run_calls = mock_pipeline_instance.run.call_args_list
+    assert len(run_calls) == 3
+
+    # We can inspect the resources (which are DltResource objects) by their .name attribute
+    bronze_resources = run_calls[0].args[0]
+    assert len(bronze_resources) == 2
+    assert bronze_resources[0].name == "coreason_etl_epar_bronze_epar_index"
+    assert bronze_resources[1].name == "coreason_etl_epar_bronze_spor_organisations"
+
+    silver_resources = run_calls[1].args[0]
+    assert len(silver_resources) == 1
+    assert silver_resources[0].name == "coreason_etl_epar_silver_epar_normalized"
+
+    gold_resources = run_calls[2].args[0]
+    assert len(gold_resources) == 3
+    assert gold_resources[0].name == "coreason_etl_epar_gold_dim_medicine"
+    assert gold_resources[1].name == "coreason_etl_epar_gold_fact_regulatory_history"
+    assert gold_resources[2].name == "coreason_etl_epar_gold_bridge_medicine_features"

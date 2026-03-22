@@ -147,6 +147,7 @@ def run_pipeline(
         if isinstance(fact_regulatory_history_df, pl.LazyFrame):  # pragma: no cover
             fact_regulatory_history_df = fact_regulatory_history_df.collect()
 
+        # Ensure schema table naming follows standard convention: packagename_[layer]_[filename]
         logger.info("Writing to Bronze schema")
         bronze_pipeline = dlt.pipeline(
             pipeline_name="coreason_etl_epar_bronze", destination=destination, dataset_name="bronze"
