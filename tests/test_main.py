@@ -423,3 +423,228 @@ def test_run_pipeline_complex_idempotency_with_changes(
     assert fact_3_sorted["is_current"][1] is True
     assert fact_3_sorted["valid_from"][1] == ingestion_ts_day2  # Lock to Day 2!
     assert fact_3_sorted["valid_to"][1] is None
+
+
+@patch("coreason_etl_epar.main.dlt.pipeline")
+@patch("coreason_etl_epar.main.get_spor_organisations_resource")
+@patch("coreason_etl_epar.main.get_epar_index_resource")
+def test_run_pipeline_idempotency_vanished_reappears(
+    mock_epar_res: Mock, mock_spor_res: Mock, mock_dlt_pipeline: Mock
+) -> None:
+    mock_dlt_pipeline.return_value = Mock()
+
+    # Day 1: Drug is present
+    epar_data_day1 = [
+        {
+            "category": "Human",
+            "product_number": "EMEA/H/C/000001",
+            "medicine_name": "GhostDrug",
+            "marketing_authorisation_holder": "GhostCorp",
+            "active_substance": "Substance G",
+            "therapeutic_area": "Area G",
+            "atc_code": "G10BA01",
+            "generic": False,
+            "biosimilar": False,
+            "orphan": False,
+            "conditional_approval": False,
+            "exceptional_circumstances": False,
+            "authorisation_status": "Authorised",
+            "revision_date": "2023-01-01T00:00:00",
+            "url": "https://www.ema.europa.eu/en/medicines/human/EPAR/ghostdrug",
+        }
+    ]
+    spor_data = [{"org_id": "ORG0001", "org_name": "ghostcorp"}]
+
+    mock_epar_res.return_value = iter(epar_data_day1)
+    mock_spor_res.return_value = iter(spor_data)
+
+    # Run 1: Initial Insert (Day 1)
+    ingestion_ts_day1 = datetime(2023, 10, 1)
+    _dim_1, fact_1, _bridge_1 = run_pipeline(
+        epar_url="http://fake",
+        spor_url="http://fake",
+        ingestion_ts=ingestion_ts_day1,
+        current_history=None,
+    )
+
+    # Day 2: Drug vanishes from snapshot (deleted/closed)
+    # Return an empty list, but wrapped in iter() to simulate the generator
+    # However, to avoid schema inference issues on empty dataframe in test,
+    # let's return a different dummy drug so schema is preserved.
+    epar_data_day2_dummy = [
+        {
+            "category": "Human",
+            "product_number": "EMEA/H/C/000999",
+            "medicine_name": "Dummy",
+            "marketing_authorisation_holder": "GhostCorp",
+            "active_substance": "Substance G",
+            "therapeutic_area": "Area G",
+            "atc_code": "G10BA01",
+            "generic": False,
+            "biosimilar": False,
+            "orphan": False,
+            "conditional_approval": False,
+            "exceptional_circumstances": False,
+            "authorisation_status": "Authorised",
+            "url": "https://www.ema.europa.eu/en/medicines/human/EPAR/ghostdrug",
+        }
+    ]
+    mock_epar_res.return_value = iter(epar_data_day2_dummy)
+    mock_spor_res.return_value = iter(spor_data)
+
+    ingestion_ts_day2 = datetime(2023, 10, 2)
+    _dim_2, fact_2, _bridge_2 = run_pipeline(
+        epar_url="http://fake",
+        spor_url="http://fake",
+        ingestion_ts=ingestion_ts_day2,
+        current_history=fact_1,
+    )
+
+    # Assert Day 2: Record should be closed (is_current=False)
+    # Plus the dummy record is inserted
+    assert len(fact_2) == 2
+    fact_2_ghost = fact_2.filter(pl.col("coreason_id") == fact_1["coreason_id"][0])
+    assert fact_2_ghost["is_current"][0] is False
+    assert fact_2_ghost["valid_to"][0] == ingestion_ts_day2
+
+    # Day 3: Drug reappears (identical data)
+    mock_epar_res.return_value = iter(epar_data_day1)
+    mock_spor_res.return_value = iter(spor_data)
+
+    ingestion_ts_day3 = datetime(2023, 10, 3)
+    _dim_3, fact_3, _bridge_3 = run_pipeline(
+        epar_url="http://fake",
+        spor_url="http://fake",
+        ingestion_ts=ingestion_ts_day3,
+        current_history=fact_2,
+    )
+
+    # Assert Day 3: Should have 2 records (1 closed from Day 2, 1 new active from Day 3)
+    # We ignore the dummy drug since it's not present in Day 3 anymore
+    # Actually just check ghost
+    fact_3_ghost = fact_3.filter(pl.col("coreason_id") == fact_1["coreason_id"][0]).sort("valid_from")
+    assert len(fact_3_ghost) == 2
+    assert fact_3_ghost["is_current"][0] is False
+    assert fact_3_ghost["valid_to"][0] == ingestion_ts_day2
+    assert fact_3_ghost["is_current"][1] is True
+    assert fact_3_ghost["valid_from"][1] == ingestion_ts_day3
+
+    # Day 4: Idempotent replay of Day 3
+    mock_epar_res.return_value = iter(epar_data_day1)
+    mock_spor_res.return_value = iter(spor_data)
+
+    ingestion_ts_day4 = datetime(2023, 10, 4)
+    _dim_4, fact_4, _bridge_4 = run_pipeline(
+        epar_url="http://fake",
+        spor_url="http://fake",
+        ingestion_ts=ingestion_ts_day4,
+        current_history=fact_3,
+    )
+
+    # Assert Day 4: Strict idempotency (history matches Day 3 exactly)
+    assert len(fact_4) == len(fact_3)
+    fact_4_ghost = fact_4.filter(pl.col("coreason_id") == fact_1["coreason_id"][0]).sort("valid_from")
+    assert len(fact_4_ghost) == 2
+    assert fact_4_ghost["is_current"][1] is True
+    assert fact_4_ghost["valid_from"][1] == ingestion_ts_day3
+
+
+@patch("coreason_etl_epar.main.dlt.pipeline")
+@patch("coreason_etl_epar.main.get_spor_organisations_resource")
+@patch("coreason_etl_epar.main.get_epar_index_resource")
+def test_run_pipeline_idempotency_status_reverted(
+    mock_epar_res: Mock, mock_spor_res: Mock, mock_dlt_pipeline: Mock
+) -> None:
+    mock_dlt_pipeline.return_value = Mock()
+
+    # Day 1: Approved
+    epar_data_day1 = [
+        {
+            "category": "Human",
+            "product_number": "EMEA/H/C/000002",
+            "medicine_name": "FlapDrug",
+            "marketing_authorisation_holder": "FlapCorp",
+            "active_substance": "Substance F",
+            "therapeutic_area": "Area F",
+            "atc_code": "F10BA02",
+            "authorisation_status": "Authorised",
+            "url": "https://www.ema.europa.eu",
+            "generic": False,
+            "biosimilar": False,
+            "orphan": False,
+            "conditional_approval": False,
+            "exceptional_circumstances": False,
+        }
+    ]
+    spor_data = [{"org_id": "ORG0002", "org_name": "flapcorp"}]
+
+    mock_epar_res.return_value = iter(epar_data_day1)
+    mock_spor_res.return_value = iter(spor_data)
+
+    ingestion_ts_day1 = datetime(2023, 10, 1)
+    _dim_1, fact_1, _bridge_1 = run_pipeline(
+        epar_url="http://fake",
+        spor_url="http://fake",
+        ingestion_ts=ingestion_ts_day1,
+        current_history=None,
+    )
+
+    # Day 2: Suspended
+    epar_data_day2 = [dict(epar_data_day1[0])]
+    epar_data_day2[0]["authorisation_status"] = "Suspended"
+
+    mock_epar_res.return_value = iter(epar_data_day2)
+    mock_spor_res.return_value = iter(spor_data)
+
+    ingestion_ts_day2 = datetime(2023, 10, 2)
+    _dim_2, fact_2, _bridge_2 = run_pipeline(
+        epar_url="http://fake",
+        spor_url="http://fake",
+        ingestion_ts=ingestion_ts_day2,
+        current_history=fact_1,
+    )
+
+    # Day 3: Reverted back to Approved
+    mock_epar_res.return_value = iter(epar_data_day1)
+    mock_spor_res.return_value = iter(spor_data)
+
+    ingestion_ts_day3 = datetime(2023, 10, 3)
+    _dim_3, fact_3, _bridge_3 = run_pipeline(
+        epar_url="http://fake",
+        spor_url="http://fake",
+        ingestion_ts=ingestion_ts_day3,
+        current_history=fact_2,
+    )
+
+    # Assert Day 3: Should have 3 records (Day 1 closed, Day 2 closed, Day 3 active)
+    assert len(fact_3) == 3
+    fact_3_sorted = fact_3.sort("valid_from")
+
+    assert fact_3_sorted["status"][0] == RegulatoryStatusEnum.APPROVED.value
+    assert fact_3_sorted["is_current"][0] is False
+
+    assert fact_3_sorted["status"][1] == RegulatoryStatusEnum.SUSPENDED.value
+    assert fact_3_sorted["is_current"][1] is False
+    assert fact_3_sorted["valid_to"][1] == ingestion_ts_day3
+
+    assert fact_3_sorted["status"][2] == RegulatoryStatusEnum.APPROVED.value
+    assert fact_3_sorted["is_current"][2] is True
+    assert fact_3_sorted["valid_from"][2] == ingestion_ts_day3
+
+    # Day 4: Idempotent replay
+    mock_epar_res.return_value = iter(epar_data_day1)
+    mock_spor_res.return_value = iter(spor_data)
+
+    ingestion_ts_day4 = datetime(2023, 10, 4)
+    _dim_4, fact_4, _bridge_4 = run_pipeline(
+        epar_url="http://fake",
+        spor_url="http://fake",
+        ingestion_ts=ingestion_ts_day4,
+        current_history=fact_3,
+    )
+
+    # Assert Day 4: Strict idempotency
+    assert len(fact_4) == 3
+    fact_4_sorted = fact_4.sort("valid_from")
+    assert fact_4_sorted["is_current"][2] is True
+    assert fact_4_sorted["valid_from"][2] == ingestion_ts_day3
