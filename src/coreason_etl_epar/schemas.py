@@ -10,7 +10,7 @@
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, HttpUrl, field_validator
 
@@ -42,6 +42,25 @@ class EPARSourceRow(BaseModel):
     authorisation_status: str
     revision_date: datetime | None = None
     url: HttpUrl
+
+    @field_validator(
+        "generic",
+        "biosimilar",
+        "orphan",
+        "conditional_approval",
+        "exceptional_circumstances",
+        mode="before",
+    )
+    @classmethod
+    def parse_forgiving_bools(cls, v: Any) -> bool:
+        if isinstance(v, str):
+            val = v.strip().lower()
+            if val in ("yes", "true", "1"):
+                return True
+            if val in ("no", "false", "0"):
+                return False
+            return False
+        return bool(v) if v is not None else False
 
     @field_validator("product_number")
     @classmethod
