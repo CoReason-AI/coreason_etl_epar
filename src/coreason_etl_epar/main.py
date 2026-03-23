@@ -8,8 +8,11 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_etl_epar
 
+import hashlib
+import json
 import uuid
 from datetime import datetime
+from typing import Any
 
 import dlt
 import polars as pl
@@ -24,6 +27,26 @@ from coreason_etl_epar.transform import (
     normalize_epar_fields,
 )
 from coreason_etl_epar.utils.logger import logger
+
+
+def _wrap_bronze_record(
+    row: dict[str, Any], source_id_key: str, ingestion_ts: datetime, source_url: str
+) -> dict[str, Any]:
+    """
+    AGENT INSTRUCTION: Wrap the raw dict into the expected Bronze schema.
+    Schema: source_id, ingestion_ts, raw_payload, source_file_hash.
+    _dlt_load_id is injected by dlt.
+    """
+    raw_payload_json = json.dumps(row, sort_keys=True, default=str)
+    file_hash_input = f"{source_url}|{ingestion_ts.isoformat()}"
+    file_hash = hashlib.md5(file_hash_input.encode("utf-8")).hexdigest()  # noqa: S324
+
+    return {
+        "source_id": row.get(source_id_key, "UNKNOWN"),
+        "ingestion_ts": ingestion_ts.isoformat(),
+        "raw_payload": raw_payload_json,
+        "source_file_hash": file_hash,
+    }
 
 
 def hello_world() -> str:
@@ -147,14 +170,20 @@ def run_pipeline(
         if isinstance(fact_regulatory_history_df, pl.LazyFrame):  # pragma: no cover
             fact_regulatory_history_df = fact_regulatory_history_df.collect()
 
+        # Ensure schema table naming follows standard convention: packagename_[layer]_[filename]
         logger.info("Writing to Bronze schema")
+
+        # Wrap the raw data into Bronze schema
+        epar_bronze_wrapped = [_wrap_bronze_record(row, "product_number", ingestion_ts, epar_url) for row in epar_dicts]
+        spor_bronze_wrapped = [_wrap_bronze_record(row, "org_id", ingestion_ts, spor_url) for row in spor_dicts]
+
         bronze_pipeline = dlt.pipeline(
             pipeline_name="coreason_etl_epar_bronze", destination=destination, dataset_name="bronze"
         )
         bronze_pipeline.run(
             [
-                dlt.resource(epar_bronze_df.to_dicts(), name="coreason_etl_epar_bronze_epar_index"),
-                dlt.resource(spor_bronze_df.to_dicts(), name="coreason_etl_epar_bronze_spor_organisations"),
+                dlt.resource(epar_bronze_wrapped, name="coreason_etl_epar_bronze_epar_index"),
+                dlt.resource(spor_bronze_wrapped, name="coreason_etl_epar_bronze_spor_organisations"),
             ],
             write_disposition="replace",
         )
