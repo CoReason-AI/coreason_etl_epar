@@ -520,51 +520,19 @@ def build_bridge_medicine_features(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFr
     is_lazy = isinstance(df, pl.LazyFrame)
     d = df.lazy() if not is_lazy else df
 
-    # Check available columns to ensure they exist before trying to process them
     schema_cols = d.collect_schema().names()
 
-    parts = []
+    # Map column names to their Gold enum representations
+    feature_columns = {
+        "active_substance": FeatureTypeEnum.SUBSTANCE.value,
+        "atc_code": FeatureTypeEnum.ATC_CODE.value,
+        "therapeutic_area": FeatureTypeEnum.THERAPEUTIC_AREA.value,
+    }
 
-    if "active_substance" in schema_cols:
-        parts.append(
-            d.select(
-                [
-                    pl.col("coreason_id"),
-                    pl.lit(FeatureTypeEnum.SUBSTANCE.value).alias("feature_type"),
-                    pl.col("active_substance").alias("feature_value"),
-                ]
-            )
-            .explode("feature_value")
-            .drop_nulls(subset=["feature_value"])
-        )
+    # Filter to only the columns that actually exist in the dataframe
+    cols_to_melt = [col for col in feature_columns if col in schema_cols]
 
-    if "atc_code" in schema_cols:
-        parts.append(
-            d.select(
-                [
-                    pl.col("coreason_id"),
-                    pl.lit(FeatureTypeEnum.ATC_CODE.value).alias("feature_type"),
-                    pl.col("atc_code").alias("feature_value"),
-                ]
-            )
-            .explode("feature_value")
-            .drop_nulls(subset=["feature_value"])
-        )
-
-    if "therapeutic_area" in schema_cols:
-        parts.append(
-            d.select(
-                [
-                    pl.col("coreason_id"),
-                    pl.lit(FeatureTypeEnum.THERAPEUTIC_AREA.value).alias("feature_type"),
-                    pl.col("therapeutic_area").alias("feature_value"),
-                ]
-            )
-            .explode("feature_value")
-            .drop_nulls(subset=["feature_value"])
-        )
-
-    if not parts:
+    if not cols_to_melt:
         # If no relevant columns exist, return an empty frame with correct schema
         empty_df = pl.LazyFrame(
             schema={
@@ -575,17 +543,18 @@ def build_bridge_medicine_features(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFr
         )
         return empty_df if is_lazy else empty_df.collect()
 
-    # Concatenate all parts
-    lazy_parts = [p if isinstance(p, pl.LazyFrame) else pl.LazyFrame(p) for p in parts]
-    concat_result = pl.concat(lazy_parts, how="vertical_relaxed")
-
-    # Deduplicate in case there are identical features
-    concat_result = concat_result.unique(subset=["coreason_id", "feature_type", "feature_value"])
-
-    return (
-        concat_result
-        if is_lazy
-        else concat_result.collect()
-        if isinstance(concat_result, pl.LazyFrame)
-        else concat_result
+    # 1. Select the required base ID and the existing feature columns
+    # 2. Unpivot (melt) the wide dataframe into a long EAV format
+    # 3. Explode the list arrays to flatten values into distinct rows
+    # 4. Map the melted variable names to standard Enums
+    # 5. Drop empty/null values and deduplicate
+    melted = (
+        d.select(["coreason_id", *cols_to_melt])
+        .unpivot(index="coreason_id", variable_name="feature_type", value_name="feature_value")
+        .explode("feature_value")
+        .drop_nulls(subset=["feature_value"])
+        .with_columns(pl.col("feature_type").replace_strict(feature_columns).alias("feature_type"))
+        .unique(subset=["coreason_id", "feature_type", "feature_value"])
     )
+
+    return melted if is_lazy else melted.collect() if isinstance(melted, pl.LazyFrame) else melted
