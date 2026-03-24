@@ -51,6 +51,7 @@ def test_epar_source_row_happy_path() -> None:
     assert row.generic is False
     assert row.biosimilar is False
     assert row.orphan is False
+    assert row.additional_monitoring is False
     assert row.conditional_approval is False
     assert row.exceptional_circumstances is False
     assert row.revision_date is None
@@ -167,7 +168,6 @@ def test_dim_medicine_happy_path() -> None:
         brand_name="SuperBrand",
         is_biosimilar=True,
         is_generic=False,
-        is_orphan=False,
         ema_product_url="https://www.ema.europa.eu/en/medicines/human/EPAR/superdrug",
     )
     assert dim.coreason_id == "123e4567-e89b-12d3-a456-426614174000"
@@ -176,7 +176,6 @@ def test_dim_medicine_happy_path() -> None:
     assert dim.brand_name == "SuperBrand"
     assert dim.is_biosimilar is True
     assert dim.is_generic is False
-    assert dim.is_orphan is False
     assert str(dim.ema_product_url) == "https://www.ema.europa.eu/en/medicines/human/EPAR/superdrug"
 
 
@@ -190,7 +189,7 @@ def test_dim_medicine_defaults() -> None:
     assert dim.brand_name is None
     assert dim.is_biosimilar is False
     assert dim.is_generic is False
-    assert dim.is_orphan is False
+    assert dim.additional_monitoring is False
 
 
 def test_fact_regulatory_history_happy_path() -> None:
@@ -212,6 +211,7 @@ def test_fact_regulatory_history_happy_path() -> None:
     assert fact.valid_to == dt_to
     assert fact.is_current is False
     assert fact.spor_mah_id == "ORG1000"
+    assert fact.is_orphan is False
 
 
 def test_fact_regulatory_history_defaults() -> None:

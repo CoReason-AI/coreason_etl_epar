@@ -8,7 +8,6 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_etl_epar
 
-import datetime
 import io
 import xml.etree.ElementTree as ET
 import zipfile
@@ -54,6 +53,7 @@ def get_epar_index_resource(url: str) -> Generator[dict[str, Any]]:
         "international_non-proprietary_name_inn___common_name": "active_substance",
         "active_substance": "active_substance",
         "orphan_medicine": "orphan",
+        "additional_monitoring": "additional_monitoring",
         "marketing_authorisation_holder_company_name": "marketing_authorisation_holder",
     }
     df.rename(columns=column_mapping, inplace=True)
@@ -83,27 +83,13 @@ def get_epar_index_resource(url: str) -> Generator[dict[str, Any]]:
         for k, v in row_dict_raw.items():
             if pd.isna(v):
                 continue
-            if isinstance(v, (pd.Timestamp, datetime.datetime)):
-                row_dict[k] = v.isoformat()
-            else:
-                row_dict[k] = v
-
-        # Source business flags often use "Yes"/"No"
-        for flag in ["generic", "biosimilar", "orphan", "conditional_approval", "exceptional_circumstances"]:
-            if flag in row_dict and isinstance(row_dict[flag], str):
-                val = row_dict[flag].strip().lower()
-                if val == "yes" or val == "true":
-                    row_dict[flag] = True
-                elif val == "no" or val == "false":
-                    row_dict[flag] = False
-                else:
-                    row_dict[flag] = False
+            row_dict[k] = v
 
         if "category" not in row_dict:
             row_dict["category"] = "Human"
 
         try:
-            # Validate row
+            # Validate row via Pydantic (natively coerces "Yes"/"No" strings and pd.Timestamp)
             valid_row = EPARSourceRow.model_validate(row_dict)
             yield valid_row.model_dump()
         except ValidationError as e:

@@ -10,7 +10,7 @@
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, HttpUrl, field_validator
 
@@ -32,6 +32,9 @@ class EPARSourceRow(BaseModel):
         default=False, description="Business Flags (Source often uses 'Yes'/'No' or Boolean)"
     )
     orphan: bool | None = Field(default=False, description="Business Flags (Source often uses 'Yes'/'No' or Boolean)")
+    additional_monitoring: bool | None = Field(
+        default=False, description="Business Flags (Source often uses 'Yes'/'No' or Boolean)"
+    )
     conditional_approval: bool | None = Field(
         default=False, description="Business Flags (Source often uses 'Yes'/'No' or Boolean)"
     )
@@ -42,6 +45,26 @@ class EPARSourceRow(BaseModel):
     authorisation_status: str
     revision_date: datetime | None = None
     url: HttpUrl
+
+    @field_validator(
+        "generic",
+        "biosimilar",
+        "orphan",
+        "additional_monitoring",
+        "conditional_approval",
+        "exceptional_circumstances",
+        mode="before",
+    )
+    @classmethod
+    def parse_forgiving_bools(cls, v: Any) -> bool:
+        if isinstance(v, str):
+            val = v.strip().lower()
+            if val in ("yes", "true", "1"):
+                return True
+            if val in ("no", "false", "0"):
+                return False
+            return False
+        return bool(v) if v is not None else False
 
     @field_validator("product_number")
     @classmethod
@@ -90,7 +113,7 @@ class DimMedicine(BaseModel):
     brand_name: str | None = None
     is_biosimilar: bool = False
     is_generic: bool = False
-    is_orphan: bool = False
+    additional_monitoring: bool = False
     ema_product_url: HttpUrl
 
 
@@ -106,6 +129,7 @@ class FactRegulatoryHistory(BaseModel):
     valid_to: datetime | None = Field(default=None, description="Timestamp")
     is_current: bool = Field(description="Boolean")
     spor_mah_id: str | None = Field(default=None, description="Organization ID from SPOR")
+    is_orphan: bool = Field(default=False, description="Boolean")
 
 
 class BridgeMedicineFeatures(BaseModel):

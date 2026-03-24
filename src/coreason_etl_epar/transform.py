@@ -290,7 +290,7 @@ def build_dim_medicine(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame | pl.Dat
             pl.lit(None, dtype=pl.String).alias("brand_name"),
             pl.col("biosimilar").fill_null(False).alias("is_biosimilar"),
             pl.col("generic").fill_null(False).alias("is_generic"),
-            pl.col("orphan").fill_null(False).alias("is_orphan"),
+            pl.col("additional_monitoring").fill_null(False).alias("additional_monitoring"),
             pl.col("url").alias("ema_product_url"),
         ]
     ).unique(subset=["coreason_id"], keep="first")
@@ -319,7 +319,7 @@ def build_fact_regulatory_history(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFra
     is_lazy = isinstance(df, pl.LazyFrame)
     d = df.lazy() if not is_lazy else df
 
-    # We need: history_id, coreason_id, status, valid_from, valid_to, is_current, spor_mah_id
+    # We need: history_id, coreason_id, status, valid_from, valid_to, is_current, spor_mah_id, is_orphan
     # Select existing columns and rename to match Gold schema
     select_cols = [
         pl.col("coreason_id"),
@@ -329,11 +329,19 @@ def build_fact_regulatory_history(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFra
         pl.col("is_current"),
     ]
 
+    schema_names = d.collect_schema().names()
+
     # Handle spor_mah_id which might not exist if enrichment wasn't done or match wasn't found
-    if "spor_mah_id" in d.collect_schema().names():
+    if "spor_mah_id" in schema_names:
         select_cols.append(pl.col("spor_mah_id"))
     else:
         select_cols.append(pl.lit(None, dtype=pl.String).alias("spor_mah_id"))
+
+    # Map orphan to is_orphan
+    if "orphan" in schema_names:
+        select_cols.append(pl.col("orphan").fill_null(False).alias("is_orphan"))
+    else:
+        select_cols.append(pl.lit(False, dtype=pl.Boolean).alias("is_orphan"))
 
     d = d.select(select_cols)
 
@@ -354,6 +362,7 @@ def build_fact_regulatory_history(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFra
             pl.col("valid_to"),
             pl.col("is_current"),
             pl.col("spor_mah_id"),
+            pl.col("is_orphan"),
         ]
     )
 

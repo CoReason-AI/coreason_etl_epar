@@ -334,6 +334,7 @@ def test_build_dim_medicine() -> None:
             "biosimilar": [True, False, True, None],
             "generic": [False, True, False, None],
             "orphan": [False, False, False, None],
+            "additional_monitoring": [True, False, True, None],
             "url": ["http://url1", "http://url2", "http://url1", "http://url3"],
         }
     )
@@ -346,7 +347,7 @@ def test_build_dim_medicine() -> None:
             "brand_name": [None, None, None],
             "is_biosimilar": [True, False, False],
             "is_generic": [False, True, False],
-            "is_orphan": [False, False, False],
+            "additional_monitoring": [True, False, False],
             "ema_product_url": ["http://url1", "http://url2", "http://url3"],
         }
     )
@@ -371,6 +372,7 @@ def test_build_dim_medicine_lazy() -> None:
             "biosimilar": [True],
             "generic": [False],
             "orphan": [False],
+            "additional_monitoring": [True],
             "url": ["http://url1"],
         }
     )
@@ -389,6 +391,7 @@ def test_build_fact_regulatory_history() -> None:
         "valid_to": [None, datetime(2022, 1, 1)],
         "is_current": [True, False],
         "spor_mah_id": ["spor1", "spor2"],
+        "orphan": [False, True],
     }
     df = pl.DataFrame(data)
     result = build_fact_regulatory_history(df)
@@ -399,6 +402,8 @@ def test_build_fact_regulatory_history() -> None:
     assert "status" in result.columns
     assert result.select("status").to_series().to_list() == ["APPROVED", "REJECTED"]
     assert result.select("history_id").to_series().to_list()[0] is not None
+    assert "is_orphan" in result.columns
+    assert result.select("is_orphan").to_series().to_list() == [False, True]
 
 
 def test_build_fact_regulatory_history_no_spor() -> None:
@@ -415,6 +420,8 @@ def test_build_fact_regulatory_history_no_spor() -> None:
     assert isinstance(result_no_spor, pl.DataFrame)
     assert "spor_mah_id" in result_no_spor.columns
     assert result_no_spor.select("spor_mah_id").to_series().to_list()[0] is None
+    assert "is_orphan" in result_no_spor.columns
+    assert result_no_spor.select("is_orphan").to_series().to_list()[0] is False
 
 
 def test_build_fact_regulatory_history_lazy() -> None:
