@@ -79,7 +79,7 @@ def run_pipeline(
 
         # Convert generators to Polars DataFrames
         # Filter out quarantined records (DataItemWithMeta) to avoid DataFrame casting errors
-        epar_dicts = [item for item in epar_generator if isinstance(item, dict)]
+        epar_dicts = [item for item in epar_generator if isinstance(item, dict) and "error" not in item]
         spor_dicts = list(spor_generator)
 
         # Determine types
