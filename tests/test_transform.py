@@ -315,6 +315,13 @@ def test_enrich_organizations() -> None:
                 None,
                 None,
             ],
+            "org_name": [
+                "pfizer inc.",
+                "Bayer AG",
+                "Novartis",
+                None,
+                None,
+            ],
         }
     )
 
@@ -329,11 +336,14 @@ def test_build_dim_medicine() -> None:
     df = pl.DataFrame(
         {
             "coreason_id": ["id1", "id2", "id1", "id3"],
+            "product_number": ["pn1", "pn2", "pn1", "pn3"],
             "medicine_name": ["Med1", "Med2", "Med1", "Med3"],
             "base_procedure_id": ["proc1", "proc2", "proc1", "proc3"],
             "biosimilar": [True, False, True, None],
             "generic": [False, True, False, None],
             "orphan": [False, False, False, None],
+            "conditional_approval": [False, False, False, None],
+            "exceptional_circumstances": [False, False, False, None],
             "url": ["http://url1", "http://url2", "http://url1", "http://url3"],
         }
     )
@@ -341,12 +351,15 @@ def test_build_dim_medicine() -> None:
     expected = pl.DataFrame(
         {
             "coreason_id": ["id1", "id2", "id3"],
+            "product_number": ["pn1", "pn2", "pn3"],
             "medicine_name": ["Med1", "Med2", "Med3"],
             "base_procedure_id": ["proc1", "proc2", "proc3"],
             "brand_name": [None, None, None],
             "is_biosimilar": [True, False, False],
             "is_generic": [False, True, False],
             "is_orphan": [False, False, False],
+            "has_conditional_approval": [False, False, False],
+            "has_exceptional_circumstances": [False, False, False],
             "ema_product_url": ["http://url1", "http://url2", "http://url3"],
         }
     )
@@ -366,11 +379,14 @@ def test_build_dim_medicine_lazy() -> None:
     df = pl.LazyFrame(
         {
             "coreason_id": ["id1"],
+            "product_number": ["pn1"],
             "medicine_name": ["Med1"],
             "base_procedure_id": ["proc1"],
             "biosimilar": [True],
             "generic": [False],
             "orphan": [False],
+            "conditional_approval": [False],
+            "exceptional_circumstances": [False],
             "url": ["http://url1"],
         }
     )
@@ -379,16 +395,19 @@ def test_build_dim_medicine_lazy() -> None:
     collected = result.collect()
     assert len(collected) == 1
     assert collected["coreason_id"][0] == "id1"
+    assert collected["product_number"][0] == "pn1"
 
 
 def test_build_fact_regulatory_history() -> None:
     data = {
         "coreason_id": ["uuid1", "uuid2"],
         "authorisation_status": ["APPROVED", "REJECTED"],
+        "marketing_authorisation_holder": ["MAH1", "MAH2"],
         "valid_from": [datetime(2020, 1, 1), datetime(2021, 1, 1)],
         "valid_to": [None, datetime(2022, 1, 1)],
         "is_current": [True, False],
         "spor_mah_id": ["spor1", "spor2"],
+        "org_name": ["org1", "org2"],
     }
     df = pl.DataFrame(data)
     result = build_fact_regulatory_history(df)
@@ -397,6 +416,7 @@ def test_build_fact_regulatory_history() -> None:
     assert len(result) == 2
     assert "history_id" in result.columns
     assert "status" in result.columns
+    assert "marketing_authorisation_holder" in result.columns
     assert result.select("status").to_series().to_list() == ["APPROVED", "REJECTED"]
     assert result.select("history_id").to_series().to_list()[0] is not None
 
@@ -405,6 +425,7 @@ def test_build_fact_regulatory_history_no_spor() -> None:
     data_no_spor = {
         "coreason_id": ["uuid3"],
         "authorisation_status": ["WITHDRAWN"],
+        "marketing_authorisation_holder": ["MAH3"],
         "valid_from": [datetime(2023, 1, 1)],
         "valid_to": [None],
         "is_current": [True],
@@ -414,17 +435,21 @@ def test_build_fact_regulatory_history_no_spor() -> None:
 
     assert isinstance(result_no_spor, pl.DataFrame)
     assert "spor_mah_id" in result_no_spor.columns
+    assert "org_name" in result_no_spor.columns
     assert result_no_spor.select("spor_mah_id").to_series().to_list()[0] is None
+    assert result_no_spor.select("org_name").to_series().to_list()[0] is None
 
 
 def test_build_fact_regulatory_history_lazy() -> None:
     data = {
         "coreason_id": ["uuid1"],
         "authorisation_status": ["APPROVED"],
+        "marketing_authorisation_holder": ["MAH1"],
         "valid_from": [datetime(2020, 1, 1)],
         "valid_to": [None],
         "is_current": [True],
         "spor_mah_id": ["spor1"],
+        "org_name": ["org1"],
     }
     df = pl.LazyFrame(data)
     result = build_fact_regulatory_history(df)
@@ -433,6 +458,7 @@ def test_build_fact_regulatory_history_lazy() -> None:
     collected = result.collect()
     assert len(collected) == 1
     assert collected["coreason_id"][0] == "uuid1"
+    assert collected["marketing_authorisation_holder"][0] == "MAH1"
 
 
 def test_enrich_organizations_lazy() -> None:

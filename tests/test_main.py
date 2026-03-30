@@ -161,10 +161,12 @@ def test_run_pipeline_incremental_load(mock_epar_res: Mock, mock_spor_res: Mock,
             "history_id": ["old-hist-1"],
             "coreason_id": [coreason_id],
             "status": [RegulatoryStatusEnum.APPROVED.value],
+            "marketing_authorisation_holder": ["PharmaCorp"],
             "valid_from": [datetime(2023, 9, 1)],
             "valid_to": [None],
             "is_current": [True],
             "spor_mah_id": ["ORG1000"],
+            "org_name": ["pharmacorp"],
         }
     )
 
@@ -719,7 +721,5 @@ def test_run_pipeline_schema_and_table_naming_conventions(
     assert silver_resources[0].name == "coreason_etl_epar_silver_epar_normalized"
 
     gold_resources = run_calls[2].args[0]
-    assert len(gold_resources) == 3
-    assert gold_resources[0].name == "coreason_etl_epar_gold_dim_medicine"
-    assert gold_resources[1].name == "coreason_etl_epar_gold_fact_regulatory_history"
-    assert gold_resources[2].name == "coreason_etl_epar_gold_bridge_medicine_features"
+    assert len(gold_resources) == 1
+    assert gold_resources[0].name == "coreason_etl_epar_gold_medicine_manifest"

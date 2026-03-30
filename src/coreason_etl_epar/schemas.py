@@ -102,30 +102,31 @@ class DimMedicine(BaseModel):
     """
     AGENT INSTRUCTION: Immutable Entity Attributes representing the `dim_medicine` table in the Gold Layer.
     """
-
     coreason_id: str = Field(description="PK: UUID5(NAMESPACE_EMA, source_id)")
+    product_number: str                 # ADDED
     medicine_name: str
     base_procedure_id: str = Field(description="Grouping Key: Extracted from product_number")
     brand_name: str | None = None
     is_biosimilar: bool = False
     is_generic: bool = False
     is_orphan: bool = False
+    has_conditional_approval: bool = False       # ADDED
+    has_exceptional_circumstances: bool = False  # ADDED
     ema_product_url: HttpUrl
-
 
 class FactRegulatoryHistory(BaseModel):
     """
     AGENT INSTRUCTION: SCD Type 2 Timeline representing the `fact_regulatory_history` table in the Gold Layer.
     """
-
     history_id: str = Field(description="PK")
     coreason_id: str = Field(description="FK: References dim_medicine.coreason_id")
     status: RegulatoryStatusEnum = Field(description="Enum")
     valid_from: datetime = Field(description="Timestamp")
     valid_to: datetime | None = Field(default=None, description="Timestamp")
     is_current: bool = Field(description="Boolean")
+    marketing_authorisation_holder: str | None = None  # ADDED
     spor_mah_id: str | None = Field(default=None, description="Organization ID from SPOR")
-
+    org_name: str | None = None                        # ADDED
 
 class BridgeMedicineFeatures(BaseModel):
     """

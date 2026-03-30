@@ -20,21 +20,21 @@ from coreason_etl_epar.ingest import get_epar_index_resource, get_spor_organisat
 
 @pytest.fixture
 def mock_excel_data() -> bytes:
-    # Create a simple Excel file in memory
+    # Create a simple Excel file in memory with exact column matches to new pipeline logic
     df = pd.DataFrame(
         {
             "Category": ["Human", "Veterinary", "Human", "Human"],
-            "Product number": ["EMEA/H/C/001234", "EMEA/V/C/005678", "INVALID/ID", "EMEA/H/C/009999"],
-            "Medicine name": ["SuperDrug", "VetDrug", "BadIDDrug", "FailDrug"],
-            "Marketing authorisation holder/company name": ["PharmaCorp", "VetCorp", "BadCorp", "FailCorp"],
+            "EMA product number": ["EMEA/H/C/001234", "EMEA/V/C/005678", "INVALID/ID", "EMEA/H/C/009999"],
+            "Name of medicine": ["SuperDrug", "VetDrug", "BadIDDrug", "FailDrug"],
+            "Marketing authorisation developer / applicant / holder": ["PharmaCorp", "VetCorp", "BadCorp", "FailCorp"],
             "International non-proprietary name (INN) / common name": [
                 "Substance X",
                 "Substance Y",
                 "Substance Z",
                 "Substance W",
             ],
-            "Authorisation status": ["Authorised", "Authorised", "Authorised", "Refused"],
-            "URL": [
+            "Medicine status": ["Authorised", "Authorised", "Authorised", "Refused"],
+            "Medicine URL": [
                 "https://www.ema.europa.eu/en/medicines/human/EPAR/superdrug",
                 "https://www.ema.europa.eu/en/medicines/vet/EPAR/vetdrug",
                 "https://www.ema.europa.eu/en/medicines/human/EPAR/baddrug",
@@ -43,10 +43,11 @@ def mock_excel_data() -> bytes:
             "Generic": ["No", "No", "No", "Yes"],
             "Biosimilar": ["Yes", "No", "No", "No"],
             "Orphan medicine": ["false", "false", "false", "true"],
+            "Exceptional circumstances": ["No", "No", "No", "No"],
         }
     )
     # The source file has 8 rows of headers before the actual data
-    dummy_header = pd.DataFrame([[""] * 10] * 8)
+    dummy_header = pd.DataFrame([[""] * 11] * 8)
 
     # Write to BytesIO
     output = io.BytesIO()
@@ -61,12 +62,12 @@ def mock_excel_data() -> bytes:
 def mock_excel_data_no_category() -> bytes:
     df = pd.DataFrame(
         {
-            "Product number": ["EMEA/H/C/001234"],
-            "Medicine name": ["SuperDrug"],
-            "Marketing authorisation holder/company name": ["PharmaCorp"],
+            "EMA product number": ["EMEA/H/C/001234"],
+            "Name of medicine": ["SuperDrug"],
+            "Marketing authorisation developer / applicant / holder": ["PharmaCorp"],
             "International non-proprietary name (INN) / common name": ["Substance X"],
-            "Authorisation status": ["Authorised"],
-            "URL": ["https://www.ema.europa.eu/en/medicines/human/EPAR/superdrug"],
+            "Medicine status": ["Authorised"],
+            "Medicine URL": ["https://www.ema.europa.eu/en/medicines/human/EPAR/superdrug"],
         }
     )
     dummy_header = pd.DataFrame([[""] * 6] * 8)
@@ -94,10 +95,6 @@ def test_get_epar_index_resource_success(mock_get: Mock, mock_excel_data: bytes)
     # 3. BadIDDrug: Invalid product number -> emitted as DataItemWithMeta to quarantine
     # 4. FailDrug: Invalid URL -> emitted as DataItemWithMeta to quarantine
 
-    # Wait, the second record is VetDrug (filtered)
-    # The third is BadIDDrug (Invalid product number, quarantine)
-    # The fourth is FailDrug (Invalid URL, quarantine)
-
     assert len(items) == 3
 
     # Check valid row
@@ -115,8 +112,6 @@ def test_get_epar_index_resource_success(mock_get: Mock, mock_excel_data: bytes)
     # Check quarantined rows
     quarantine_1 = items[1]
     assert isinstance(quarantine_1, dict)
-    # In some dlt versions, metadata is on __wrapped__ or similar, or it's a subclass of dict.
-    # Actually, let's just assert the error message is present since we know it yielded the quarantine dict.
     assert "error" in quarantine_1
     assert "Invalid EMA Product Number format" in quarantine_1["error"]
 
@@ -150,12 +145,12 @@ def test_get_epar_index_resource_datetime_and_na(mock_get: Mock) -> None:
     # Test pandas NA and datetime logic
     df = pd.DataFrame(
         {
-            "Product number": ["EMEA/H/C/001234"],
-            "Medicine name": ["SuperDrug"],
-            "Marketing authorisation holder/company name": ["PharmaCorp"],
+            "EMA product number": ["EMEA/H/C/001234"],
+            "Name of medicine": ["SuperDrug"],
+            "Marketing authorisation developer / applicant / holder": ["PharmaCorp"],
             "International non-proprietary name (INN) / common name": ["Substance X"],
-            "Authorisation status": ["Authorised"],
-            "URL": ["https://www.ema.europa.eu/en/medicines/human/EPAR/superdrug"],
+            "Medicine status": ["Authorised"],
+            "Medicine URL": ["https://www.ema.europa.eu/en/medicines/human/EPAR/superdrug"],
             "Revision date": [datetime.datetime(2023, 1, 1)],
             "Generic": [pd.NA],
             "Exceptional circumstances": ["Maybe"],
@@ -178,7 +173,7 @@ def test_get_epar_index_resource_datetime_and_na(mock_get: Mock) -> None:
     assert len(items) == 1
     valid_row = items[0]
     assert isinstance(valid_row, dict)
-    assert valid_row["revision_date"].isoformat().startswith("2023-01-01")
+    assert valid_row["revision_date"].startswith("2023-01-01")
     assert valid_row["generic"] is False
     assert valid_row["exceptional_circumstances"] is False
 
@@ -204,12 +199,10 @@ def mock_spor_xml_data() -> bytes:
             <IndustrySector>Marketing Authorisation Holder</IndustrySector>
         </Organisation>
         <Organisation>
-            <!-- Missing name but is MAH -->
             <OrganisationId>ORG100000003</OrganisationId>
             <IndustrySector>Marketing Authorisation Holder</IndustrySector>
         </Organisation>
         <Organisation>
-            <!-- Valid record but not MAH so should be skipped if we filter properly -->
             <OrganisationId>ORG100000004</OrganisationId>
             <OrganisationName>Third MAH Inc</OrganisationName>
             <IndustrySector>marketing authorisation holder</IndustrySector>
@@ -261,8 +254,6 @@ def test_get_spor_organisations_resource_validation_error(mock_get: Mock) -> Non
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
     <Organisations>
         <Organisation>
-            <!-- org id without matching text is filtered before validation -->
-            <!-- Test validation error on empty string which is invalid per min_length=1 -->
             <OrganisationId>ORG100000000</OrganisationId>
             <OrganisationName>  </OrganisationName>
             <IndustrySector>Marketing Authorisation Holder</IndustrySector>
