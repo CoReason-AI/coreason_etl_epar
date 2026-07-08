@@ -50,10 +50,16 @@ def get_epar_index_resource(url: str) -> Generator[dict[str, Any]]:
     )
 
     column_mapping = {
+        "name_of_medicine": "medicine_name",
+        "ema_product_number": "product_number",
+        "medicine_status": "authorisation_status",
+        "marketing_authorisation_developer___applicant___holder": "marketing_authorisation_holder",
         "international_non-proprietary_name_inn___common_name": "active_substance",
         "active_substance": "active_substance",
+        "therapeutic_area_mesh": "therapeutic_area",
+        "atc_code_human": "atc_code",
         "orphan_medicine": "orphan",
-        "marketing_authorisation_holder_company_name": "marketing_authorisation_holder",
+        "medicine_url": "url"
     }
     df.rename(columns=column_mapping, inplace=True)
 
@@ -90,7 +96,7 @@ def get_epar_index_resource(url: str) -> Generator[dict[str, Any]]:
         try:
             # Validate row via Pydantic (natively coerces "Yes"/"No" strings and pd.Timestamp)
             valid_row = EPARSourceRow.model_validate(row_dict)
-            yield valid_row.model_dump()
+            yield valid_row.model_dump(mode='json')
         except ValidationError as e:
             # Route to quarantine
             error_details = {"raw_data": row_dict_raw, "error": str(e)}
@@ -150,7 +156,7 @@ def get_spor_organisations_resource(url: str) -> Generator[dict[str, Any]]:
                         # organization element.
                         try:
                             valid_row = SPOROrganisationRow(org_id=org_id.strip(), org_name=org_name.strip())
-                            yield valid_row.model_dump()
+                            yield valid_row.model_dump(mode='json')
                         except ValidationError as e:
                             logger.warning(f"Skipping invalid organization record {org_id}: {e}")
 

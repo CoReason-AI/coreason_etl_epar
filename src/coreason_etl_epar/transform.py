@@ -224,7 +224,7 @@ def enrich_organizations(
 
     # Now join back to the original EPAR frame
     best_matches_selected = best_matches.select(
-        [pl.col("mah_name").alias("marketing_authorisation_holder"), pl.col("org_id").alias("spor_mah_id")]
+        [pl.col("mah_name").alias("marketing_authorisation_holder"), pl.col("org_id").alias("spor_mah_id"),pl.col("spor_name").alias("org_name")]
     )
     # Re-cast to correct types for mypy before join
     epar_lf = epar if isinstance(epar, pl.LazyFrame) else pl.LazyFrame(epar)
@@ -278,23 +278,21 @@ def enrich_organizations(
 
 
 def build_dim_medicine(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame | pl.DataFrame:
-    """
-    AGENT INSTRUCTION: Transform Silver data into the `dim_medicine` Gold table format.
-    Extract immutable entity attributes and deduplicate by coreason_id.
-    """
     return df.select(
         [
             pl.col("coreason_id"),
+            pl.col("product_number"), # ADDED
             pl.col("medicine_name"),
             pl.col("base_procedure_id"),
             pl.lit(None, dtype=pl.String).alias("brand_name"),
             pl.col("biosimilar").fill_null(False).alias("is_biosimilar"),
             pl.col("generic").fill_null(False).alias("is_generic"),
             pl.col("orphan").fill_null(False).alias("is_orphan"),
+            pl.col("conditional_approval").fill_null(False).alias("has_conditional_approval"),           # ADDED
+            pl.col("exceptional_circumstances").fill_null(False).alias("has_exceptional_circumstances"), # ADDED
             pl.col("url").alias("ema_product_url"),
         ]
     ).unique(subset=["coreason_id"], keep="first")
-
 
 def build_fact_regulatory_history(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame | pl.DataFrame:
     """
@@ -324,6 +322,7 @@ def build_fact_regulatory_history(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFra
     select_cols = [
         pl.col("coreason_id"),
         pl.col("authorisation_status").alias("status"),
+        pl.col("marketing_authorisation_holder"), # ADDED
         pl.col("valid_from"),
         pl.col("valid_to"),
         pl.col("is_current"),
@@ -332,8 +331,10 @@ def build_fact_regulatory_history(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFra
     # Handle spor_mah_id which might not exist if enrichment wasn't done or match wasn't found
     if "spor_mah_id" in d.collect_schema().names():
         select_cols.append(pl.col("spor_mah_id"))
+        select_cols.append(pl.col("org_name")) # ADDED
     else:
         select_cols.append(pl.lit(None, dtype=pl.String).alias("spor_mah_id"))
+        select_cols.append(pl.lit(None, dtype=pl.String).alias("org_name")) # ADDED
 
     d = d.select(select_cols)
 
@@ -350,10 +351,12 @@ def build_fact_regulatory_history(df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFra
             pl.col("history_id"),
             pl.col("coreason_id"),
             pl.col("status"),
+            pl.col("marketing_authorisation_holder"), # ADDED
             pl.col("valid_from"),
             pl.col("valid_to"),
             pl.col("is_current"),
             pl.col("spor_mah_id"),
+            pl.col("org_name"), # ADDED
         ]
     )
 
