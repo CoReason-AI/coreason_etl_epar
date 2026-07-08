@@ -162,34 +162,27 @@ def test_feature_type_enum() -> None:
 def test_dim_medicine_happy_path() -> None:
     dim = DimMedicine(
         coreason_id="123e4567-e89b-12d3-a456-426614174000",
-        product_number="EMEA/H/C/001234",
         medicine_name="SuperDrug",
         base_procedure_id="001234",
         brand_name="SuperBrand",
         is_biosimilar=True,
         is_generic=False,
         is_orphan=False,
-        has_conditional_approval=False,
-        has_exceptional_circumstances=False,
         ema_product_url="https://www.ema.europa.eu/en/medicines/human/EPAR/superdrug",
     )
     assert dim.coreason_id == "123e4567-e89b-12d3-a456-426614174000"
-    assert dim.product_number == "EMEA/H/C/001234"
     assert dim.medicine_name == "SuperDrug"
     assert dim.base_procedure_id == "001234"
     assert dim.brand_name == "SuperBrand"
     assert dim.is_biosimilar is True
     assert dim.is_generic is False
     assert dim.is_orphan is False
-    assert dim.has_conditional_approval is False
-    assert dim.has_exceptional_circumstances is False
     assert str(dim.ema_product_url) == "https://www.ema.europa.eu/en/medicines/human/EPAR/superdrug"
 
 
 def test_dim_medicine_defaults() -> None:
     dim = DimMedicine(
         coreason_id="123e4567-e89b-12d3-a456-426614174000",
-        product_number="EMEA/H/C/001234",
         medicine_name="SuperDrug",
         base_procedure_id="001234",
         ema_product_url="https://www.ema.europa.eu/en/medicines/human/EPAR/superdrug",
@@ -198,8 +191,6 @@ def test_dim_medicine_defaults() -> None:
     assert dim.is_biosimilar is False
     assert dim.is_generic is False
     assert dim.is_orphan is False
-    assert dim.has_conditional_approval is False
-    assert dim.has_exceptional_circumstances is False
 
 
 def test_fact_regulatory_history_happy_path() -> None:
@@ -212,9 +203,7 @@ def test_fact_regulatory_history_happy_path() -> None:
         valid_from=dt_from,
         valid_to=dt_to,
         is_current=False,
-        marketing_authorisation_holder="PharmaCorp",
         spor_mah_id="ORG1000",
-        org_name="pharmacorp",
     )
     assert fact.history_id == "hist-123"
     assert fact.coreason_id == "123e4567-e89b-12d3-a456-426614174000"
@@ -222,9 +211,7 @@ def test_fact_regulatory_history_happy_path() -> None:
     assert fact.valid_from == dt_from
     assert fact.valid_to == dt_to
     assert fact.is_current is False
-    assert fact.marketing_authorisation_holder == "PharmaCorp"
     assert fact.spor_mah_id == "ORG1000"
-    assert fact.org_name == "pharmacorp"
 
 
 def test_fact_regulatory_history_defaults() -> None:
@@ -237,9 +224,7 @@ def test_fact_regulatory_history_defaults() -> None:
         is_current=True,
     )
     assert fact.valid_to is None
-    assert fact.marketing_authorisation_holder is None
     assert fact.spor_mah_id is None
-    assert fact.org_name is None
 
 
 def test_bridge_medicine_features_happy_path() -> None:
@@ -255,22 +240,17 @@ def test_bridge_medicine_features_happy_path() -> None:
 
 @given(
     coreason_id=st.text(min_size=1),
-    product_number=st.text(min_size=1),
     medicine_name=st.text(min_size=1),
     base_procedure_id=st.text(min_size=1),
     url=st.from_regex(r"^https://www\.example\.com/[a-z]+$", fullmatch=True),
 )
-def test_dim_medicine_fuzz(
-    coreason_id: str, product_number: str, medicine_name: str, base_procedure_id: str, url: str
-) -> None:
+def test_dim_medicine_fuzz(coreason_id: str, medicine_name: str, base_procedure_id: str, url: str) -> None:
     dim = DimMedicine(
         coreason_id=coreason_id,
-        product_number=product_number,
         medicine_name=medicine_name,
         base_procedure_id=base_procedure_id,
         ema_product_url=url,
     )
     assert dim.coreason_id == coreason_id
-    assert dim.product_number == product_number
     assert dim.medicine_name == medicine_name
     assert dim.base_procedure_id == base_procedure_id
