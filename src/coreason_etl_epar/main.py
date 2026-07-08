@@ -79,7 +79,7 @@ def run_pipeline(
 
         # Convert generators to Polars DataFrames
         # Filter out quarantined records (DataItemWithMeta) to avoid DataFrame casting errors
-        epar_dicts = [item for item in epar_generator if isinstance(item, dict) and "error" not in item]
+        epar_dicts = [item for item in epar_generator if isinstance(item, dict)]
         spor_dicts = list(spor_generator)
 
         # Determine types
@@ -127,21 +127,11 @@ def run_pipeline(
                 new_history_snapshot = new_history_snapshot.with_columns(
                     pl.lit(None, dtype=pl.String).alias("spor_mah_id")
                 )
-            if "org_name" not in new_history_snapshot.columns:  # pragma: no cover
-                new_history_snapshot = new_history_snapshot.with_columns(
-                    pl.lit(None, dtype=pl.String).alias("org_name")
-                )
 
             hash_cols = ["status", "spor_mah_id"]
             id_col = "coreason_id"
 
-            cols_for_history = [
-                "coreason_id",
-                "status",
-                "marketing_authorisation_holder",
-                "spor_mah_id",
-                "org_name"
-            ]
+            cols_for_history = ["coreason_id", "status", "spor_mah_id"]
             new_history_snapshot_aligned = new_history_snapshot.select(cols_for_history)
 
             new_history_snapshot_aligned = new_history_snapshot_aligned.with_columns(
@@ -207,33 +197,22 @@ def run_pipeline(
             write_disposition="replace",
         )
 
-        logger.info("Writing to Gold schema (Flattened OBT)")
-        
-        # 1. Flatten the bridge table features into lists
-        features_agg = bridge_medicine_features_df.group_by("coreason_id").agg([
-            pl.col("feature_value").filter(pl.col("feature_type") == "ATC_CODE").alias("atc_codes"),
-            pl.col("feature_value").filter(pl.col("feature_type") == "SUBSTANCE").alias("active_substances"),
-            pl.col("feature_value").filter(pl.col("feature_type") == "THERAPEUTIC_AREA").alias("therapeutic_areas"),
-        ])
-        
-        # 2. Merge Dim, active Fact, and Features into a single table
-        gold_obt_df = dim_medicine_df.join(
-            fact_regulatory_history_df.filter(pl.col("is_current") == True),
-            on="coreason_id",
-            how="left"
-        ).join(
-            features_agg,
-            on="coreason_id",
-            how="left"
-        )
-
+        logger.info("Writing to Gold schema")
         gold_pipeline = dlt.pipeline(
             pipeline_name="coreason_etl_epar_gold", destination=destination, dataset_name="gold"
         )
-        
-        # 3. Write only the single flattened table
         gold_pipeline.run(
-            [dlt.resource(gold_obt_df.to_dicts(), name="coreason_etl_epar_gold_medicine_manifest")],
+            [
+                dlt.resource(dim_medicine_df.to_dicts(), name="coreason_etl_epar_gold_dim_medicine"),
+                dlt.resource(
+                    fact_regulatory_history_df.to_dicts(),
+                    name="coreason_etl_epar_gold_fact_regulatory_history",
+                ),
+                dlt.resource(
+                    bridge_medicine_features_df.to_dicts(),
+                    name="coreason_etl_epar_gold_bridge_medicine_features",
+                ),
+            ],
             write_disposition="replace",
         )
 
