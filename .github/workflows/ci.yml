@@ -39,12 +39,13 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.14", "3.14t"]
+      fail-fast: false
     steps:
       - uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
-          enable-cache: true
+          enable-cache: false
           python-version: ${{ matrix.python-version }}
 
       - name: Set PYTHON_GIL for Free-Threading
@@ -52,19 +53,25 @@ jobs:
         run: echo "PYTHON_GIL=0" >> $GITHUB_ENV
         shell: bash
 
+      # See https://github.com/ijl/orjson/issues/495
+      # orjson does not support free-threaded Python
       - name: Install dependencies
+        if: matrix.python-version != '3.14t'
         run: uv sync --all-extras --dev
         shell: bash
 
       - name: Run tests
+        if: matrix.python-version != '3.14t'
         run: uv run pytest --cov=src --cov-report=xml
         shell: bash
 
       - name: Build docs
+        if: matrix.python-version != '3.14t'
         run: uv run zensical build
         shell: bash
 
       - name: Upload coverage to Codecov
+        if: matrix.python-version != '3.14t'
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -79,12 +86,13 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest]
         python-version: ["3.14", "3.14t"]
+      fail-fast: false
     steps:
       - uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
-          enable-cache: true
+          enable-cache: false
           python-version: ${{ matrix.python-version }}
 
       - name: Set PYTHON_GIL for Free-Threading
@@ -93,10 +101,12 @@ jobs:
         shell: bash
 
       - name: Install dependencies
+        if: matrix.python-version != '3.14t'
         run: uv sync --all-extras --dev
         shell: bash
 
       - name: Run tests
+        if: matrix.python-version != '3.14t'
         run: uv run pytest --cov=src --cov-report=xml
         shell: bash
 
